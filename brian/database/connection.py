@@ -24,8 +24,12 @@ class Database:
             # Default to ~/.brian/brian.db
             home = Path.home()
             brian_dir = home / ".brian"
-            brian_dir.mkdir(exist_ok=True)
+            brian_dir.mkdir(exist_ok=True, parents=True)
             db_path = str(brian_dir / "brian.db")
+        else:
+            # Ensure parent directory exists for custom path
+            db_file = Path(db_path)
+            db_file.parent.mkdir(exist_ok=True, parents=True)
         
         self.db_path = db_path
         self._connection: Optional[sqlite3.Connection] = None

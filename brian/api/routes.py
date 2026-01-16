@@ -137,7 +137,7 @@ async def toggle_favorite(item_id: str):
 
 
 @router.post("/items/{item_id}/vote", response_model=dict)
-async def vote_item(item_id: str, direction: str = Query(..., regex="^(up|down)$")):
+async def vote_item(item_id: str, direction: str = Query(..., pattern="^(up|down)$")):
     """Vote on an item (up or down)"""
     repo, _, _ = get_repositories()
     
