@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 brian - Your Personal Knowledge Base</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>🧠 brian</h1>
+                <span class="tagline">your personal knowledge base</span>
+            </div>
+            
+            <div class="nav-search">
+                <i class="fas fa-search"></i>
+                <input type="text" id="searchInput" placeholder="Search your knowledge...">
+            </div>
+            
+            <div class="nav-actions">
+                <button class="btn btn-primary" id="addItemBtn">
+                    <i class="fas fa-plus"></i> Add Knowledge
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- View Switcher -->
+    <div class="view-switcher">
+        <button class="view-btn active" data-view="feed">
+            <i class="fas fa-th-large"></i> Feed
+        </button>
+        <button class="view-btn" data-view="timeline">
+            <i class="fas fa-clock"></i> Time Machine
+        </button>
+        <button class="view-btn" data-view="graph">
+            <i class="fas fa-project-diagram"></i> Graph
+        </button>
+    </div>
+
+    <!-- Filters (for Feed view) -->
+    <div class="filters" id="feedFilters">
+        <div class="filter-group">
+            <label>Type:</label>
+            <button class="filter-btn active" data-type="all">All</button>
+            <button class="filter-btn" data-type="link">🔗 Links</button>
+            <button class="filter-btn" data-type="note">📝 Notes</button>
+            <button class="filter-btn" data-type="snippet">💻 Snippets</button>
+            <button class="filter-btn" data-type="paper">📄 Papers</button>
+        </div>
+        
+        <div class="filter-group">
+            <label>Sort:</label>
+            <select id="sortBy">
+                <option value="created_at">Newest First</option>
+                <option value="updated_at">Recently Updated</option>
+                <option value="vote_count">Most Voted</option>
+                <option value="title">Alphabetical</option>
+            </select>
+        </div>
+        
+        <div class="filter-group">
+            <label>
+                <input type="checkbox" id="favoritesOnly">
+                Favorites Only
+            </label>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- Feed View -->
+        <div id="feedView" class="view active">
+            <div class="stats-bar">
+                <div class="stat">
+                    <span class="stat-value" id="totalItems">0</span>
+                    <span class="stat-label">Total Items</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="totalTags">0</span>
+                    <span class="stat-label">Tags</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="totalConnections">0</span>
+                    <span class="stat-label">Connections</span>
+                </div>
+            </div>
+            
+            <div id="itemsGrid" class="items-grid">
+                <!-- Items will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Timeline View -->
+        <div id="timelineView" class="view">
+            <div class="timeline-controls">
+                <button id="timelineBack"><i class="fas fa-chevron-left"></i></button>
+                <div id="timelineDate" class="timeline-date">January 2026</div>
+                <button id="timelineForward"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <div id="timelineContainer" class="timeline-container">
+                <!-- Timeline will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Graph View -->
+        <div id="graphView" class="view">
+            <div class="graph-controls">
+                <button id="resetZoom">Reset View</button>
+                <label>
+                    <input type="checkbox" id="showLabels" checked>
+                    Show Labels
+                </label>
+            </div>
+            <div id="graphContainer" class="graph-container">
+                <!-- Graph will be rendered here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Add/Edit Modal -->
+    <div id="itemModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add Knowledge</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            
+            <form id="itemForm">
+                <input type="hidden" id="itemId">
+                
+                <div class="form-group">
+                    <label>Type</label>
+                    <div class="type-selector">
+                        <button type="button" class="type-btn active" data-type="link">
+                            🔗 Link
+                        </button>
+                        <button type="button" class="type-btn" data-type="note">
+                            📝 Note
+                        </button>
+                        <button type="button" class="type-btn" data-type="snippet">
+                            💻 Snippet
+                        </button>
+                        <button type="button" class="type-btn" data-type="paper">
+                            📄 Paper
+                        </button>
+                    </div>
+                    <input type="hidden" id="itemType" value="link">
+                </div>
+                
+                <div class="form-group">
+                    <label for="itemTitle">Title *</label>
+                    <input type="text" id="itemTitle" required>
+                </div>
+                
+                <div class="form-group" id="urlGroup">
+                    <label for="itemUrl">URL</label>
+                    <input type="url" id="itemUrl">
+                </div>
+                
+                <div class="form-group" id="languageGroup" style="display: none;">
+                    <label for="itemLanguage">Language</label>
+                    <select id="itemLanguage">
+                        <option value="">Select language...</option>
+                        <option value="javascript">JavaScript</option>
+                        <option value="python">Python</option>
+                        <option value="java">Java</option>
+                        <option value="csharp">C#</option>
+                        <option value="cpp">C++</option>
+                        <option value="go">Go</option>
+                        <option value="rust">Rust</option>
+                        <option value="sql">SQL</option>
+                        <option value="html">HTML</option>
+                        <option value="css">CSS</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="itemContent">Content *</label>
+                    <textarea id="itemContent" rows="10" required placeholder="Markdown supported..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="itemTags">Tags (comma-separated)</label>
+                    <input type="text" id="itemTags" placeholder="e.g. programming, tutorial, important">
+                    <div id="tagSuggestions" class="tag-suggestions"></div>
+                </div>
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary modal-close">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/views.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
