@@ -1,6 +1,6 @@
 # 🧠 Brian - Your Personal Knowledge Base
 
-> A play on "brain" - Brian is your intelligent knowledge repository with vector-based similarity search, beautiful graph visualization, and seamless Goose integration.
+> A play on "brain" - Brian is your intelligent knowledge repository with vector-based similarity search, beautiful graph visualization, and seamless Goose integration. Because I cannot spell 9/10 times and I make this mistake all the time now you can too!
 <img width="2036" height="1193" alt="Screenshot 2026-01-20 at 3 10 36 PM" src="https://github.com/user-attachments/assets/4699bcea-8e51-4950-be92-200290c9a9f7" />
 
 
