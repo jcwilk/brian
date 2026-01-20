@@ -86,6 +86,7 @@ echo ""
 
 # Install frontend dependencies
 echo -e "${BLUE}Installing frontend dependencies...${NC}"
+echo -e "${YELLOW}  (This may take 2-3 minutes - downloading React, Vite, D3.js, etc.)${NC}"
 cd frontend
 if [ -f "package.json" ]; then
     npm install --silent
