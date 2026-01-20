@@ -60,16 +60,16 @@ source venv/bin/activate
 echo -e "${GREEN}✓ Virtual environment activated${NC}"
 echo ""
 
-# Upgrade pip
-echo -e "${BLUE}Upgrading pip...${NC}"
-python -m pip install --upgrade pip --quiet
-echo -e "${GREEN}✓ pip upgraded${NC}"
+# Upgrade pip and build tools
+echo -e "${BLUE}Upgrading pip and build tools...${NC}"
+python -m pip install --upgrade pip setuptools wheel --quiet
+echo -e "${GREEN}✓ pip and build tools upgraded${NC}"
 echo ""
 
 # Install Python dependencies
 echo -e "${BLUE}Installing Python dependencies...${NC}"
 if [ -f "pyproject.toml" ]; then
-    pip install --no-cache-dir -e . --quiet
+    pip install -e . --quiet
     echo -e "${GREEN}✓ Python dependencies installed${NC}"
 else
     echo -e "${RED}Error: pyproject.toml not found${NC}"
