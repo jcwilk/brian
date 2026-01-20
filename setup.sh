@@ -60,10 +60,11 @@ source venv/bin/activate
 echo -e "${GREEN}✓ Virtual environment activated${NC}"
 echo ""
 
-# Upgrade pip and build tools
-echo -e "${BLUE}Upgrading pip and build tools...${NC}"
-python -m pip install --upgrade pip setuptools wheel --quiet
-echo -e "${GREEN}✓ pip and build tools upgraded${NC}"
+# Clear pip cache and upgrade build tools
+echo -e "${BLUE}Preparing Python environment...${NC}"
+python -m pip cache purge > /dev/null 2>&1 || true
+python -m pip install --no-cache-dir --upgrade pip setuptools wheel --quiet
+echo -e "${GREEN}✓ Python environment ready${NC}"
 echo ""
 
 # Install Python dependencies
