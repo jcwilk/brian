@@ -69,13 +69,19 @@ echo ""
 
 # Install Python dependencies
 echo -e "${BLUE}Installing Python dependencies...${NC}"
-if [ -f "pyproject.toml" ]; then
-    pip install -e . --quiet
+if [ -f "requirements.txt" ]; then
+    pip install --no-cache-dir -r requirements.txt --quiet
     echo -e "${GREEN}✓ Python dependencies installed${NC}"
 else
-    echo -e "${RED}Error: pyproject.toml not found${NC}"
+    echo -e "${RED}Error: requirements.txt not found${NC}"
     exit 1
 fi
+echo ""
+
+# Install brian package in development mode
+echo -e "${BLUE}Installing Brian package...${NC}"
+pip install --no-cache-dir -e . --quiet
+echo -e "${GREEN}✓ Brian package installed${NC}"
 echo ""
 
 # Install frontend dependencies
