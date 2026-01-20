@@ -23,6 +23,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# But allow frontend lib directory
+!frontend/src/lib/
+
 # Database
 *.db
 *.sqlite
