@@ -21,7 +21,7 @@
 
 - **Python 3.8+** - [Download](https://www.python.org/downloads/)
 - **Node.js 16+** - [Download](https://nodejs.org/)
-- **Goose** (optional) - For AI assistant integration
+- **Goose** (optional) - For AI assistant integration - https://github.com/block/goose 
 
 ### One-Command Installation
 
