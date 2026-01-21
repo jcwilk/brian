@@ -60,7 +60,7 @@ def init_services():
 
 
 # Load HTML template for item view
-TEMPLATES_DIR = Path(__file__).parent / "templates"
+TEMPLATES_DIR = Path(__file__).parent / "mcp-app-views"
 ITEM_VIEW_TEMPLATE = (TEMPLATES_DIR / "item_view.html").read_text()
 
 
