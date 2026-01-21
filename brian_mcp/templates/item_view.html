@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 16px;
+      line-height: 1.5;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    
+    body.light { background: #ffffff; color: #1d1d1f; }
+    body.dark { background: #1d1d1f; color: #f5f5f7; }
+    
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      line-height: 1.3;
+    }
+    
+    .content {
+      font-size: 0.95rem;
+      margin-bottom: 16px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    pre {
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+      font-size: 0.75rem;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    body.light pre {
+      background: #f5f5f7;
+      border: 1px solid #e5e5e7;
+    }
+    
+    body.dark pre {
+      background: #2d2d2f;
+      border: 1px solid #3d3d3f;
+    }
+  </style>
+</head>
+<body class="light">
+  <h1>{{title}}</h1>
+  <p class="content">{{content}}</p>
+  <pre>{{details_json}}</pre>
+
+  <script>
+    // Simple MCP App client for theme sync
+    class McpAppClient {
+      constructor() {
+        this.pendingRequests = new Map();
+        this.requestId = 0;
+        window.addEventListener('message', (e) => this.handleMessage(e));
+        this.initialize();
+      }
+      
+      async initialize() {
+        try {
+          const result = await this.request('ui/initialize', {});
+          if (result?.hostContext?.theme) {
+            this.applyTheme(result.hostContext.theme);
+          }
+          this.notify('ui/notifications/initialized', {});
+          this.reportSize();
+        } catch (error) {
+          console.error('Failed to initialize MCP App:', error);
+        }
+      }
+      
+      handleMessage(event) {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        
+        if ('id' in data && this.pendingRequests.has(data.id)) {
+          const { resolve, reject } = this.pendingRequests.get(data.id);
+          this.pendingRequests.delete(data.id);
+          data.error ? reject(new Error(data.error.message)) : resolve(data.result);
+          return;
+        }
+        
+        if (data.method === 'ui/notifications/host-context-changed') {
+          if (data.params?.theme) {
+            this.applyTheme(data.params.theme);
+          }
+        }
+      }
+      
+      request(method, params) {
+        return new Promise((resolve, reject) => {
+          const id = ++this.requestId;
+          this.pendingRequests.set(id, { resolve, reject });
+          window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+          setTimeout(() => {
+            if (this.pendingRequests.has(id)) {
+              this.pendingRequests.delete(id);
+              reject(new Error('Request timed out'));
+            }
+          }, 30000);
+        });
+      }
+      
+      notify(method, params) {
+        window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+      }
+      
+      applyTheme(theme) {
+        document.body.className = theme;
+      }
+      
+      reportSize() {
+        this.notify('ui/notifications/size-changed', { height: document.body.scrollHeight });
+      }
+    }
+    
+    new McpAppClient();
+  </script>
+</body>
+</html>

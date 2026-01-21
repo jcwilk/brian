@@ -7,6 +7,7 @@ Allows AI assistants to search, create, and connect knowledge items.
 """
 
 import asyncio
+import html
 import json
 import os
 import sys
@@ -53,6 +54,39 @@ def init_services():
     similarity_service = SimilarityService()
 
 
+# Load HTML template for item view
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+ITEM_VIEW_TEMPLATE = (TEMPLATES_DIR / "item_view.html").read_text()
+
+
+def generate_item_view_html(item: KnowledgeItem) -> str:
+    """Generate HTML view for a knowledge item (MCP App)"""
+    # Escape all user content for safety
+    title_escaped = html.escape(item.title or "Untitled")
+    content_escaped = html.escape(item.content or "")
+    
+    # Build the details dict for the pre block
+    details = {
+        "id": item.id,
+        "title": item.title,
+        "content": item.content,
+        "type": str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type),
+        "tags": item.tags,
+        "url": item.url,
+        "language": item.language,
+        "favorite": item.favorite,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+    details_json = html.escape(json.dumps(details, indent=2))
+    
+    # Replace template placeholders
+    return (ITEM_VIEW_TEMPLATE
+        .replace("{{title}}", title_escaped)
+        .replace("{{content}}", content_escaped)
+        .replace("{{details_json}}", details_json))
+
+
 @server.list_resources()
 async def handle_list_resources() -> list[Resource]:
     """List available resources"""
@@ -79,8 +113,10 @@ async def handle_list_resources() -> list[Resource]:
 
 
 @server.read_resource()
-async def handle_read_resource(uri: str) -> str:
+async def handle_read_resource(uri: str) -> list:
     """Read a specific resource"""
+    from mcp.types import TextResourceContents
+    
     if uri == "brian://stats":
         items = repo.get_all()
         stats = {
@@ -135,6 +171,35 @@ async def handle_read_resource(uri: str) -> str:
         } for item in recent]
         
         return json.dumps(result, indent=2)
+    
+    elif uri.startswith("ui://brian/item/"):
+        # Extract item_id from URI: ui://brian/item/{item_id}
+        item_id = uri.replace("ui://brian/item/", "")
+        item = repo.get_by_id(item_id)
+        
+        if not item:
+            raise ValueError(f"Item {item_id} not found")
+        
+        # Generate HTML for the MCP App
+        html_content = generate_item_view_html(item)
+        
+        # Return as a list with TextResourceContents including _meta for MCP App
+        return [
+            TextResourceContents(
+                uri=uri,
+                mimeType="text/html;profile=mcp-app",
+                text=html_content,
+                meta={
+                    "ui": {
+                        "csp": {
+                            "connectDomains": [],
+                            "resourceDomains": [],
+                        },
+                        "prefersBorder": True,
+                    }
+                }
+            )
+        ]
     
     else:
         raise ValueError(f"Unknown resource: {uri}")
@@ -578,9 +643,15 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         }
         
+        # Return with MCP App UI resource reference
         return [TextContent(
             type="text",
-            text=json.dumps(response, indent=2)
+            text=json.dumps(response, indent=2),
+            meta={
+                "ui": {
+                    "resourceUri": f"ui://brian/item/{item_id}"
+                }
+            }
         )]
     
     elif name == "get_knowledge_context":
