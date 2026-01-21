@@ -119,26 +119,6 @@
     
     body.light .url-link { color: #007aff; }
     body.dark .url-link { color: #0a84ff; }
-    
-    pre {
-      font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-      font-size: 0.75rem;
-      padding: 12px;
-      border-radius: 8px;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    
-    body.light pre {
-      background: #f5f5f7;
-      border: 1px solid #e5e5e7;
-    }
-    
-    body.dark pre {
-      background: #2d2d2f;
-      border: 1px solid #3d3d3f;
-    }
   </style>
 </head>
 <body class="light">
@@ -156,7 +136,6 @@
     <a class="url-link" id="item-url" href="#" target="_blank" style="display: none;"></a>
     <p class="item-content" id="item-content"></p>
     <div class="meta" id="item-meta"></div>
-    <pre id="item-details"></pre>
   </div>
 
   <script>
@@ -176,7 +155,6 @@
       const urlEl = document.getElementById('item-url');
       const contentTextEl = document.getElementById('item-content');
       const metaEl = document.getElementById('item-meta');
-      const detailsEl = document.getElementById('item-details');
       
       // Escape HTML for safety
       function escapeHtml(str) {
@@ -260,9 +238,6 @@
           metaParts.push('Language: ' + data.language);
         }
         metaEl.textContent = metaParts.join(' • ');
-        
-        // Full JSON details
-        detailsEl.textContent = JSON.stringify(data, null, 2);
         
         // Show content, hide loading
         loadingEl.classList.add('is-hidden');
