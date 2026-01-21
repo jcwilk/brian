@@ -31,7 +31,11 @@ from mcp.types import (
     TextContent,
     ImageContent,
     EmbeddedResource,
-    LoggingLevel
+    LoggingLevel,
+    ReadResourceRequest,
+    ReadResourceResult,
+    TextResourceContents,
+    ServerResult,
 )
 
 # Initialize server
@@ -40,6 +44,8 @@ server = Server("brian-knowledge")
 # Global repository instance
 repo: Optional[KnowledgeRepository] = None
 similarity_service: Optional[SimilarityService] = None
+
+
 
 
 def init_services():
@@ -51,6 +57,24 @@ def init_services():
     # The database should already be initialized by the web app
     repo = KnowledgeRepository(db)
     similarity_service = SimilarityService()
+
+
+# Load HTML template for item view
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+ITEM_VIEW_TEMPLATE = (TEMPLATES_DIR / "item_view.html").read_text()
+
+
+def generate_item_view_html() -> str:
+    """Return the HTML template for item view (MCP App)
+    
+    Data is populated client-side via tool result notifications.
+    """
+    return ITEM_VIEW_TEMPLATE
+
+
+# MCP App URI constant
+MCP_APP_ITEM_URI = "ui://brian/item"
+MCP_APPS_MIME_TYPE = "text/html;profile=mcp-app"
 
 
 @server.list_resources()
@@ -75,13 +99,22 @@ async def handle_list_resources() -> list[Resource]:
             description="Recently created knowledge items",
             mimeType="application/json",
         ),
+        Resource(
+            uri=MCP_APP_ITEM_URI,
+            name="Item Details",
+            description="View details of a knowledge item",
+            mimeType=MCP_APPS_MIME_TYPE,
+        ),
     ]
 
 
-@server.read_resource()
-async def handle_read_resource(uri: str) -> str:
-    """Read a specific resource"""
-    if uri == "brian://stats":
+# Register read_resource handler directly to support _meta for MCP Apps
+async def handle_read_resource(req: ReadResourceRequest) -> ServerResult:
+    """Read a specific resource - registered directly to support _meta"""
+    # Convert uri to string for comparison (it may be AnyUrl type)
+    uri_str = str(req.params.uri)
+    
+    if uri_str == "brian://stats":
         items = repo.get_all()
         stats = {
             "total_items": len(items),
@@ -94,9 +127,15 @@ async def handle_read_resource(uri: str) -> str:
             item_type = item.item_type or "unknown"
             stats["by_type"][item_type] = stats["by_type"].get(item_type, 0) + 1
         
-        return json.dumps(stats, indent=2)
+        return ServerResult(ReadResourceResult(
+            contents=[TextResourceContents(
+                uri=uri_str,
+                mimeType="application/json",
+                text=json.dumps(stats, indent=2)
+            )]
+        ))
     
-    elif uri == "brian://graph":
+    elif uri_str == "brian://graph":
         # Get all connections
         items = repo.get_all()
         connections = []
@@ -118,9 +157,15 @@ async def handle_read_resource(uri: str) -> str:
             "edges": connections
         }
         
-        return json.dumps(graph, indent=2)
+        return ServerResult(ReadResourceResult(
+            contents=[TextResourceContents(
+                uri=uri_str,
+                mimeType="application/json",
+                text=json.dumps(graph, indent=2)
+            )]
+        ))
     
-    elif uri == "brian://recent":
+    elif uri_str == "brian://recent":
         items = repo.get_all()
         # Sort by created_at, most recent first
         items.sort(key=lambda x: x.created_at, reverse=True)
@@ -134,10 +179,40 @@ async def handle_read_resource(uri: str) -> str:
             "tags": item.tags,
         } for item in recent]
         
-        return json.dumps(result, indent=2)
+        return ServerResult(ReadResourceResult(
+            contents=[TextResourceContents(
+                uri=uri_str,
+                mimeType="application/json",
+                text=json.dumps(result, indent=2)
+            )]
+        ))
+    
+    elif uri_str == MCP_APP_ITEM_URI:
+        # Return the HTML template for item details with MCP App metadata
+        html_content = generate_item_view_html()
+        
+        return ServerResult(ReadResourceResult(
+            contents=[TextResourceContents(
+                uri=uri_str,
+                mimeType=MCP_APPS_MIME_TYPE,
+                text=html_content,
+                _meta={
+                    "ui": {
+                        "prefersBorder": True,
+                        "csp": {
+                            "connectDomains": [],
+                            "resourceDomains": [],
+                        },
+                    }
+                }
+            )]
+        ))
     
     else:
-        raise ValueError(f"Unknown resource: {uri}")
+        raise ValueError(f"Unknown resource: {uri_str}")
+
+# Register the handler directly
+server.request_handlers[ReadResourceRequest] = handle_read_resource
 
 
 @server.list_tools()
@@ -218,6 +293,11 @@ For simple web links without document content:
                     }
                 },
                 "required": ["title", "content", "item_type"]
+            },
+            _meta={
+                "ui": {
+                    "resourceUri": MCP_APP_ITEM_URI
+                }
             }
         ),
         Tool(
@@ -256,6 +336,11 @@ For simple web links without document content:
                     }
                 },
                 "required": ["item_id"]
+            },
+            _meta={
+                "ui": {
+                    "resourceUri": MCP_APP_ITEM_URI
+                }
             }
         ),
         Tool(
@@ -482,25 +567,36 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         
         created_item = repo.create(item)
         
-        response = {
-            "success": True,
-            "item": {
-                "id": created_item.id,
-                "title": created_item.title,
-                "type": str(created_item.item_type.value) if hasattr(created_item.item_type, 'value') else str(created_item.item_type),
-                "created_at": created_item.created_at.isoformat() if created_item.created_at else None,
-                "link_metadata_fetched": bool(link_metadata)
-            }
+        item_type_str = str(created_item.item_type.value) if hasattr(created_item.item_type, 'value') else str(created_item.item_type)
+        
+        # Return structured content for the MCP App view
+        structured_content = {
+            "id": created_item.id,
+            "title": created_item.title,
+            "content": created_item.content,
+            "type": item_type_str,
+            "tags": created_item.tags,
+            "url": created_item.url,
+            "language": created_item.language,
+            "favorite": created_item.favorite,
+            "created_at": created_item.created_at.isoformat() if created_item.created_at else None,
+            "updated_at": created_item.updated_at.isoformat() if created_item.updated_at else None,
         }
         
-        # Add Google Doc detection info if applicable
+        # Build text content
+        text_content = "Successfully created the item."
         if google_doc_content:
-            response["google_doc_detected"] = google_doc_content
+            text_content += f"\n\nNote: {google_doc_content['message']}"
         
-        return [TextContent(
-            type="text",
-            text=json.dumps(response, indent=2)
-        )]
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": text_content
+                }
+            ],
+            "structuredContent": structured_content
+        }
     
     elif name == "find_similar_items":
         item_id = arguments["item_id"]
@@ -565,11 +661,14 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 text=json.dumps({"error": f"Item {item_id} not found"})
             )]
         
-        response = {
+        item_type_str = str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type)
+        
+        # Return structured content - the _meta.ui.resourceUri is in the tool definition
+        structured_content = {
             "id": item.id,
             "title": item.title,
             "content": item.content,
-            "type": str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type),
+            "type": item_type_str,
             "tags": item.tags,
             "url": item.url,
             "language": item.language,
@@ -578,10 +677,16 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         }
         
-        return [TextContent(
-            type="text",
-            text=json.dumps(response, indent=2)
-        )]
+        # Return both content and structuredContent for the MCP App
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Here is the item."
+                }
+            ],
+            "structuredContent": structured_content
+        }
     
     elif name == "get_knowledge_context":
         topic = arguments["topic"]
