@@ -293,6 +293,11 @@ For simple web links without document content:
                     }
                 },
                 "required": ["title", "content", "item_type"]
+            },
+            _meta={
+                "ui": {
+                    "resourceUri": MCP_APP_ITEM_URI
+                }
             }
         ),
         Tool(
@@ -562,25 +567,36 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         
         created_item = repo.create(item)
         
-        response = {
-            "success": True,
-            "item": {
-                "id": created_item.id,
-                "title": created_item.title,
-                "type": str(created_item.item_type.value) if hasattr(created_item.item_type, 'value') else str(created_item.item_type),
-                "created_at": created_item.created_at.isoformat() if created_item.created_at else None,
-                "link_metadata_fetched": bool(link_metadata)
-            }
+        item_type_str = str(created_item.item_type.value) if hasattr(created_item.item_type, 'value') else str(created_item.item_type)
+        
+        # Return structured content for the MCP App view
+        structured_content = {
+            "id": created_item.id,
+            "title": created_item.title,
+            "content": created_item.content,
+            "type": item_type_str,
+            "tags": created_item.tags,
+            "url": created_item.url,
+            "language": created_item.language,
+            "favorite": created_item.favorite,
+            "created_at": created_item.created_at.isoformat() if created_item.created_at else None,
+            "updated_at": created_item.updated_at.isoformat() if created_item.updated_at else None,
         }
         
-        # Add Google Doc detection info if applicable
+        # Build text summary for the content array
+        text_summary = f"Created {item_type_str}: {created_item.title}"
         if google_doc_content:
-            response["google_doc_detected"] = google_doc_content
+            text_summary += f"\n\nNote: {google_doc_content['message']}"
         
-        return [TextContent(
-            type="text",
-            text=json.dumps(response, indent=2)
-        )]
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": text_summary
+                }
+            ],
+            "structuredContent": structured_content
+        }
     
     elif name == "find_similar_items":
         item_id = arguments["item_id"]
