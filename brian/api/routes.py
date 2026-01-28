@@ -9,6 +9,7 @@ from ..models import KnowledgeItem, Tag, Connection, ItemType, Region, RegionTyp
 from ..database import Database
 from ..database.repository import KnowledgeRepository, TagRepository, ConnectionRepository, RegionRepository
 from ..services import SimilarityService
+from ..services.clustering import ClusteringService
 
 # Create router
 router = APIRouter()
@@ -600,4 +601,186 @@ async def get_item_regions(item_id: str):
     
     regions = region_repo.get_regions_for_item(item_id)
     return [region.to_dict() for region in regions]
+
+
+# ============================================================================
+# Clustering / Auto-Region Endpoints
+# ============================================================================
+
+# Color palette for auto-generated regions
+CLUSTER_COLORS = [
+    '#8b5cf6',  # violet
+    '#3b82f6',  # blue
+    '#06b6d4',  # cyan
+    '#10b981',  # emerald
+    '#22c55e',  # green
+    '#eab308',  # yellow
+    '#f97316',  # orange
+    '#ef4444',  # red
+    '#ec4899',  # pink
+    '#a855f7',  # purple
+]
+
+
+@router.get("/clustering/suggest", response_model=dict)
+async def suggest_clusters(
+    n_clusters: Optional[int] = Query(None, ge=2, le=20, description="Number of clusters (auto-detect if not specified)"),
+    max_clusters: int = Query(8, ge=2, le=15, description="Maximum clusters for auto-detection")
+):
+    """
+    Analyze knowledge items and suggest cluster-based regions.
+    Uses TF-IDF vectors and k-means clustering.
+    
+    Returns cluster suggestions with:
+    - Suggested name based on keywords
+    - Keywords for each cluster
+    - Items that would belong to each cluster
+    """
+    repo, _, _, _ = get_repositories()
+    
+    # Get all items
+    items = repo.get_all(limit=1000)
+    if len(items) < 2:
+        return {
+            "clusters": [],
+            "message": "Need at least 2 items to cluster"
+        }
+    
+    items_dict = [item.to_dict() for item in items]
+    
+    # Run clustering
+    clustering_service = ClusteringService()
+    clusters = clustering_service.cluster_items(
+        items_dict,
+        n_clusters=n_clusters,
+        auto_detect=(n_clusters is None),
+        max_clusters=max_clusters
+    )
+    
+    # Format response
+    result = {
+        "n_clusters": len(clusters),
+        "total_items": len(items_dict),
+        "clusters": []
+    }
+    
+    for i, cluster in enumerate(clusters):
+        result["clusters"].append({
+            "suggested_name": cluster["name"],
+            "keywords": cluster["keywords"],
+            "size": cluster["size"],
+            "item_ids": cluster["item_ids"],
+            "suggested_color": CLUSTER_COLORS[i % len(CLUSTER_COLORS)],
+            "items_preview": [
+                {"id": item["id"], "title": item["title"]}
+                for item in cluster["items"][:5]  # Preview first 5 items
+            ]
+        })
+    
+    return result
+
+
+@router.post("/clustering/generate-regions", response_model=dict)
+async def generate_cluster_regions(
+    options: dict
+):
+    """
+    Generate regions from cluster analysis.
+    
+    Options:
+    - n_clusters: Number of clusters (optional, auto-detect if not specified)
+    - max_clusters: Maximum clusters for auto-detection (default: 8)
+    - prefix: Prefix for region names (optional)
+    - replace_existing: Whether to delete existing cluster regions first (default: false)
+    
+    Returns created regions.
+    """
+    repo, _, _, region_repo = get_repositories()
+    
+    n_clusters = options.get("n_clusters")
+    max_clusters = options.get("max_clusters", 8)
+    prefix = options.get("prefix", "")
+    replace_existing = options.get("replace_existing", False)
+    
+    # Get all items
+    items = repo.get_all(limit=1000)
+    if len(items) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 items to cluster")
+    
+    items_dict = [item.to_dict() for item in items]
+    
+    # Optionally delete existing cluster regions
+    if replace_existing:
+        existing_regions = region_repo.get_all(region_type=RegionType.CLUSTER)
+        for region in existing_regions:
+            region_repo.delete(region.id)
+    
+    # Run clustering
+    clustering_service = ClusteringService()
+    clusters = clustering_service.cluster_items(
+        items_dict,
+        n_clusters=n_clusters,
+        auto_detect=(n_clusters is None),
+        max_clusters=max_clusters
+    )
+    
+    # Create regions from clusters
+    created_regions = []
+    for i, cluster in enumerate(clusters):
+        name = f"{prefix}{cluster['name']}" if prefix else cluster["name"]
+        
+        region = Region(
+            name=name,
+            description=f"Auto-generated cluster region. Keywords: {', '.join(cluster['keywords'][:5])}",
+            color=CLUSTER_COLORS[i % len(CLUSTER_COLORS)],
+            region_type=RegionType.CLUSTER,
+            is_visible=True,
+            item_ids=cluster["item_ids"]
+        )
+        
+        created = region_repo.create(region)
+        created_regions.append(created.to_dict())
+    
+    return {
+        "created_count": len(created_regions),
+        "regions": created_regions
+    }
+
+
+@router.get("/clustering/optimal-k", response_model=dict)
+async def get_optimal_cluster_count(
+    max_k: int = Query(10, ge=2, le=20, description="Maximum k to evaluate"),
+    method: str = Query("elbow", pattern="^(elbow|silhouette)$", description="Method: 'elbow' or 'silhouette'")
+):
+    """
+    Estimate the optimal number of clusters for the knowledge base.
+    
+    Methods:
+    - elbow: Finds the "elbow" point where adding clusters has diminishing returns
+    - silhouette: Maximizes cluster cohesion and separation
+    """
+    repo, _, _, _ = get_repositories()
+    
+    items = repo.get_all(limit=1000)
+    if len(items) < 3:
+        return {
+            "optimal_k": 1,
+            "message": "Need at least 3 items for meaningful clustering"
+        }
+    
+    items_dict = [item.to_dict() for item in items]
+    
+    clustering_service = ClusteringService()
+    optimal_k = clustering_service.estimate_optimal_k(
+        items_dict,
+        max_k=min(max_k, len(items_dict)),
+        method=method
+    )
+    
+    return {
+        "optimal_k": optimal_k,
+        "total_items": len(items_dict),
+        "method": method,
+        "max_k_evaluated": min(max_k, len(items_dict))
+    }
 
