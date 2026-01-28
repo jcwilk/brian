@@ -2,7 +2,7 @@
 Database schema for brian - inspired by Goose's SQLite architecture
 """
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Schema creation SQL statements
 SCHEMA_SQL = """
@@ -77,6 +77,29 @@ CREATE TABLE IF NOT EXISTS link_metadata (
     FOREIGN KEY (item_id) REFERENCES knowledge_items(id) ON DELETE CASCADE
 );
 
+-- Knowledge regions for spatial grouping of nodes in graph view
+CREATE TABLE IF NOT EXISTS regions (
+    id TEXT PRIMARY KEY,  -- UUID
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT DEFAULT '#8b5cf6',  -- Hex color for region boundary/fill
+    region_type TEXT NOT NULL DEFAULT 'manual',  -- 'manual', 'tag-based', 'cluster', 'smart'
+    bounds_json TEXT,  -- JSON: polygon points, bounding box, or other geometry
+    is_visible BOOLEAN DEFAULT TRUE,  -- Toggle visibility in graph
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Junction table for region-item membership (many-to-many)
+CREATE TABLE IF NOT EXISTS region_items (
+    region_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (region_id, item_id),
+    FOREIGN KEY (region_id) REFERENCES regions(id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES knowledge_items(id) ON DELETE CASCADE
+);
+
 -- Full-text search virtual table
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_search USING fts5(
     item_id UNINDEXED,
@@ -96,6 +119,10 @@ CREATE INDEX IF NOT EXISTS idx_items_votes ON knowledge_items(vote_count DESC);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_connections_source ON connections(source_item_id);
 CREATE INDEX IF NOT EXISTS idx_connections_target ON connections(target_item_id);
+CREATE INDEX IF NOT EXISTS idx_regions_type ON regions(region_type);
+CREATE INDEX IF NOT EXISTS idx_regions_visible ON regions(is_visible);
+CREATE INDEX IF NOT EXISTS idx_region_items_region ON region_items(region_id);
+CREATE INDEX IF NOT EXISTS idx_region_items_item ON region_items(item_id);
 
 -- Triggers for updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_knowledge_items_timestamp 
@@ -118,6 +145,14 @@ END;
 CREATE TRIGGER IF NOT EXISTS knowledge_items_au AFTER UPDATE ON knowledge_items BEGIN
     UPDATE knowledge_search SET title = new.title, content = new.content
     WHERE item_id = new.id;
+END;
+
+-- Trigger for regions updated_at timestamp
+CREATE TRIGGER IF NOT EXISTS update_regions_timestamp 
+AFTER UPDATE ON regions
+BEGIN
+    UPDATE regions SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
 END;
 """
 

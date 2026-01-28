@@ -1,13 +1,223 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import * as d3 from 'd3'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Loader2, Tag, Info, Link as LinkIcon, FileText, Code2, FileCode } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Loader2, Tag, Info, Link as LinkIcon, FileText, Code2, FileCode, Map as MapIcon, Eye, EyeOff, Pencil, Trash2, Plus, Check } from 'lucide-react'
+import { useStore } from '@/store/useStore'
+
+// Predefined color palette for regions
+const REGION_COLORS = [
+  '#8b5cf6', // violet
+  '#3b82f6', // blue
+  '#06b6d4', // cyan
+  '#10b981', // emerald
+  '#22c55e', // green
+  '#eab308', // yellow
+  '#f97316', // orange
+  '#ef4444', // red
+  '#ec4899', // pink
+  '#a855f7', // purple
+]
+
+/**
+ * Compute convex hull for a set of points
+ * Uses Graham scan algorithm
+ */
+function computeConvexHull(points) {
+  if (points.length < 3) return points
+  
+  // Find the point with lowest y (and leftmost if tie)
+  let start = 0
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].y < points[start].y || 
+        (points[i].y === points[start].y && points[i].x < points[start].x)) {
+      start = i
+    }
+  }
+  
+  // Swap start point to beginning
+  [points[0], points[start]] = [points[start], points[0]]
+  const pivot = points[0]
+  
+  // Sort by polar angle
+  const sorted = points.slice(1).sort((a, b) => {
+    const angleA = Math.atan2(a.y - pivot.y, a.x - pivot.x)
+    const angleB = Math.atan2(b.y - pivot.y, b.x - pivot.x)
+    return angleA - angleB
+  })
+  
+  // Build hull
+  const hull = [pivot]
+  for (const point of sorted) {
+    while (hull.length > 1) {
+      const top = hull[hull.length - 1]
+      const second = hull[hull.length - 2]
+      const cross = (top.x - second.x) * (point.y - second.y) - 
+                    (top.y - second.y) * (point.x - second.x)
+      if (cross <= 0) hull.pop()
+      else break
+    }
+    hull.push(point)
+  }
+  
+  return hull
+}
+
+/**
+ * Expand hull points outward by a padding amount
+ */
+function expandHull(hull, padding = 30) {
+  if (hull.length < 3) return hull
+  
+  // Calculate centroid
+  const cx = hull.reduce((sum, p) => sum + p.x, 0) / hull.length
+  const cy = hull.reduce((sum, p) => sum + p.y, 0) / hull.length
+  
+  // Expand each point outward from centroid
+  return hull.map(p => {
+    const dx = p.x - cx
+    const dy = p.y - cy
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    if (dist === 0) return p
+    return {
+      x: p.x + (dx / dist) * padding,
+      y: p.y + (dy / dist) * padding
+    }
+  })
+}
+
+/**
+ * Generate smooth path for hull using cardinal spline
+ */
+function hullPath(hull) {
+  if (hull.length < 3) return ''
+  
+  const line = d3.line()
+    .x(d => d.x)
+    .y(d => d.y)
+    .curve(d3.curveCardinalClosed.tension(0.7))
+  
+  return line(hull)
+}
+
+/**
+ * Update region hulls on the SVG layer
+ */
+function updateRegionHulls(regionsLayer, regions, nodePositions, hoveredRegionId) {
+  if (!regionsLayer || !regions) return
+  
+  // Filter to visible regions only
+  const visibleRegions = regions.filter(r => r.is_visible)
+  
+  // Bind data to region groups
+  const regionGroups = regionsLayer.selectAll('.region-group')
+    .data(visibleRegions, d => d.id)
+  
+  // Remove old regions
+  regionGroups.exit().remove()
+  
+  // Add new region groups
+  const enterGroups = regionGroups.enter()
+    .append('g')
+    .attr('class', 'region-group')
+  
+  // Add path for hull shape
+  enterGroups.append('path')
+    .attr('class', 'region-hull')
+    .attr('fill-opacity', 0.15)
+    .attr('stroke-width', 2)
+    .attr('stroke-dasharray', '8,4')
+  
+  // Add label at centroid
+  enterGroups.append('text')
+    .attr('class', 'region-label')
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 12)
+    .attr('font-weight', 500)
+    .attr('fill-opacity', 0.8)
+    .attr('pointer-events', 'none')
+  
+  // Merge enter and update selections
+  const allGroups = enterGroups.merge(regionGroups)
+  
+  // Update each region
+  allGroups.each(function(region) {
+    const group = d3.select(this)
+    const isHovered = region.id === hoveredRegionId
+    
+    // Get positions of items in this region
+    const points = (region.item_ids || [])
+      .map(id => nodePositions.get(id))
+      .filter(p => p && p.x !== undefined && p.y !== undefined)
+    
+    if (points.length < 2) {
+      // Not enough points to draw a region
+      group.select('.region-hull').attr('d', '')
+      group.select('.region-label').attr('opacity', 0)
+      return
+    }
+    
+    // For 2 points, create an ellipse-like shape
+    let hull, expandedHull
+    if (points.length === 2) {
+      // Create a pill shape between two points
+      const [p1, p2] = points
+      const dx = p2.x - p1.x
+      const dy = p2.y - p1.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const perpX = -dy / dist * 40
+      const perpY = dx / dist * 40
+      
+      hull = [
+        { x: p1.x + perpX, y: p1.y + perpY },
+        { x: p2.x + perpX, y: p2.y + perpY },
+        { x: p2.x - perpX, y: p2.y - perpY },
+        { x: p1.x - perpX, y: p1.y - perpY }
+      ]
+      expandedHull = hull
+    } else {
+      // Compute convex hull and expand it
+      hull = computeConvexHull([...points])
+      expandedHull = expandHull(hull, 40)
+    }
+    
+    // Calculate centroid for label
+    const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length
+    const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length
+    
+    // Update hull path
+    group.select('.region-hull')
+      .attr('d', hullPath(expandedHull))
+      .attr('fill', region.color)
+      .attr('stroke', region.color)
+      .attr('fill-opacity', isHovered ? 0.25 : 0.12)
+      .attr('stroke-opacity', isHovered ? 1 : 0.6)
+      .attr('stroke-width', isHovered ? 3 : 2)
+    
+    // Update label
+    group.select('.region-label')
+      .attr('x', cx)
+      .attr('y', cy - (points.length === 2 ? 0 : Math.max(...points.map(p => Math.abs(p.y - cy))) + 25))
+      .attr('fill', region.color)
+      .attr('opacity', isHovered ? 1 : 0.7)
+      .text(region.name)
+  })
+}
 
 /**
  * SimilarityGraph - Force-directed graph showing content similarity connections
  * Uses D3.js force simulation to visualize relationships between knowledge items
- * Supports theme-based highlighting via hover
+ * Supports theme-based highlighting via hover and knowledge regions
  */
 export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const svgRef = useRef(null)
@@ -15,9 +225,34 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)
   const [hoveredTheme, setHoveredTheme] = useState(null)
+  const [hoveredRegion, setHoveredRegion] = useState(null)
   const [showThemeLegend, setShowThemeLegend] = useState(false)
   const [showInfoLegend, setShowInfoLegend] = useState(false)
+  const [showRegionsPanel, setShowRegionsPanel] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  
+  // Region state from store
+  const { 
+    regions, 
+    fetchRegions, 
+    createRegion,
+    toggleRegionVisibility,
+    deleteRegion,
+    regionsLoading 
+  } = useStore()
+  
+  // Create Region dialog state
+  const [showCreateRegionDialog, setShowCreateRegionDialog] = useState(false)
+  const [newRegionName, setNewRegionName] = useState('')
+  const [newRegionDescription, setNewRegionDescription] = useState('')
+  const [newRegionColor, setNewRegionColor] = useState(REGION_COLORS[0])
+  const [selectedItemIds, setSelectedItemIds] = useState([])
+  const [isCreatingRegion, setIsCreatingRegion] = useState(false)
+  
+  // Store node positions for region hull calculation
+  const nodePositionsRef = useRef(new Map())
+  const regionElementsRef = useRef(null)
+  const hoveredRegionRef = useRef(null)
 
   // Detect dark mode
   useEffect(() => {
@@ -134,6 +369,54 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       fetchConnections()
     }
   }, [items])
+
+  // Fetch regions when component mounts
+  useEffect(() => {
+    fetchRegions()
+  }, [fetchRegions])
+
+  // Handle opening the create region dialog
+  const handleOpenCreateRegion = useCallback(() => {
+    // Reset form state
+    setNewRegionName('')
+    setNewRegionDescription('')
+    setNewRegionColor(REGION_COLORS[Math.floor(Math.random() * REGION_COLORS.length)])
+    setSelectedItemIds([])
+    setShowCreateRegionDialog(true)
+  }, [])
+
+  // Handle creating a new region
+  const handleCreateRegion = useCallback(async () => {
+    if (!newRegionName.trim()) return
+    
+    setIsCreatingRegion(true)
+    try {
+      await createRegion({
+        name: newRegionName.trim(),
+        description: newRegionDescription.trim(),
+        color: newRegionColor,
+        item_ids: selectedItemIds
+      })
+      setShowCreateRegionDialog(false)
+      // Reset form
+      setNewRegionName('')
+      setNewRegionDescription('')
+      setSelectedItemIds([])
+    } catch (error) {
+      console.error('Failed to create region:', error)
+    } finally {
+      setIsCreatingRegion(false)
+    }
+  }, [newRegionName, newRegionDescription, newRegionColor, selectedItemIds, createRegion])
+
+  // Toggle item selection for region
+  const toggleItemSelection = useCallback((itemId) => {
+    setSelectedItemIds(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    )
+  }, [])
 
   // Handle pulsing animation for selected node (separate from main graph render)
   useEffect(() => {
@@ -347,6 +630,13 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
         setSelectedNode(nodeWithPosition)
       })
 
+    // Create regions layer (behind everything else)
+    const regionsLayer = g.insert('g', ':first-child')
+      .attr('class', 'regions-layer')
+    
+    // Store reference for region updates
+    regionElementsRef.current = regionsLayer
+
     // Update positions on each tick
     simulation.on('tick', () => {
       link
@@ -366,6 +656,14 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       label
         .attr('x', d => d.x)
         .attr('y', d => d.y)
+      
+      // Update node positions map for region calculations
+      nodes.forEach(n => {
+        nodePositionsRef.current.set(n.id, { x: n.x, y: n.y })
+      })
+      
+      // Update region hulls (use ref for hovered state to avoid re-renders)
+      updateRegionHulls(regionsLayer, regions, nodePositionsRef.current, hoveredRegionRef.current)
     })
 
     // Drag behavior
@@ -397,7 +695,18 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     return () => {
       simulation.stop()
     }
-  }, [items, connections, width, height, loading, isDarkMode])
+  }, [items, connections, width, height, loading, isDarkMode, regions])
+  
+  // Separate effect for region hover updates (doesn't restart simulation)
+  useEffect(() => {
+    // Update the ref so the tick function can access current value
+    hoveredRegionRef.current = hoveredRegion
+    
+    // Directly update region styling without re-rendering the graph
+    if (regionElementsRef.current && nodePositionsRef.current.size > 0) {
+      updateRegionHulls(regionElementsRef.current, regions, nodePositionsRef.current, hoveredRegion)
+    }
+  }, [hoveredRegion, regions])
 
   if (loading) {
     return (
@@ -506,6 +815,292 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
           )}
         </div>
       )}
+
+      {/* Regions Button - Below Theme button */}
+      <div className="absolute top-20 right-6 z-40">
+        <div className="group relative">
+          <Button
+            size="icon"
+            onClick={() => setShowRegionsPanel(!showRegionsPanel)}
+            className={`h-12 w-12 rounded-full shadow-lg transition-colors ${
+              showRegionsPanel
+                ? 'bg-black hover:bg-gray-800 text-white'
+                : 'bg-card hover:bg-muted text-foreground'
+            }`}
+          >
+            <MapIcon className="w-5 h-5" />
+          </Button>
+          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-black text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap font-light">
+            Regions
+            {regions.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 bg-card text-foreground rounded text-xs">
+                {regions.length}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Regions Panel */}
+      {showRegionsPanel && (
+        <div className="absolute top-36 right-6 bg-card/95 backdrop-blur-md p-4 rounded-lg shadow-xl border border-border w-80 max-h-[60vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">Knowledge Regions</h3>
+            <button
+              onClick={() => setShowRegionsPanel(false)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+          
+          {/* + New Region Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full mb-3 gap-2"
+            onClick={handleOpenCreateRegion}
+          >
+            <Plus className="w-4 h-4" />
+            New Region
+          </Button>
+          
+          {regionsLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : regions.length === 0 ? (
+            <div className="text-center py-4">
+              <MapIcon className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">No regions yet</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Create regions to group related knowledge items
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {regions.map((region) => (
+                <div
+                  key={region.id}
+                  className={`
+                    p-3 rounded-lg border transition-all cursor-pointer
+                    ${hoveredRegion === region.id 
+                      ? 'border-2 shadow-md' 
+                      : 'border-border hover:border-muted-foreground/50'
+                    }
+                  `}
+                  style={{
+                    borderColor: hoveredRegion === region.id ? region.color : undefined,
+                    backgroundColor: hoveredRegion === region.id ? `${region.color}10` : undefined
+                  }}
+                  onMouseEnter={() => setHoveredRegion(region.id)}
+                  onMouseLeave={() => setHoveredRegion(null)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: region.color }}
+                      />
+                      <span className="font-medium text-sm">{region.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleRegionVisibility(region.id)
+                        }}
+                        title={region.is_visible ? 'Hide region' : 'Show region'}
+                      >
+                        {region.is_visible ? (
+                          <Eye className="w-3.5 h-3.5" />
+                        ) : (
+                          <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(`Delete region "${region.name}"?`)) {
+                            deleteRegion(region.id)
+                          }
+                        }}
+                        title="Delete region"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {region.description && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {region.description}
+                    </p>
+                  )}
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="secondary" className="text-xs">
+                      {region.item_count} item{region.item_count !== 1 ? 's' : ''}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs capitalize">
+                      {region.region_type}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Create Region Dialog */}
+      <Dialog open={showCreateRegionDialog} onOpenChange={setShowCreateRegionDialog}>
+        <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Region</DialogTitle>
+            <DialogDescription>
+              Create a region to group related knowledge items together.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Region Name */}
+            <div className="space-y-2">
+              <Label htmlFor="region-name">Name</Label>
+              <Input
+                id="region-name"
+                placeholder="e.g., Project Research, Design Patterns..."
+                value={newRegionName}
+                onChange={(e) => setNewRegionName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            
+            {/* Region Description */}
+            <div className="space-y-2">
+              <Label htmlFor="region-description">Description (optional)</Label>
+              <Input
+                id="region-description"
+                placeholder="What this region contains..."
+                value={newRegionDescription}
+                onChange={(e) => setNewRegionDescription(e.target.value)}
+              />
+            </div>
+            
+            {/* Color Picker */}
+            <div className="space-y-2">
+              <Label>Color</Label>
+              <div className="flex flex-wrap gap-2">
+                {REGION_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`
+                      w-8 h-8 rounded-full transition-all
+                      ${newRegionColor === color 
+                        ? 'ring-2 ring-offset-2 ring-offset-background scale-110' 
+                        : 'hover:scale-110'
+                      }
+                    `}
+                    style={{ 
+                      backgroundColor: color,
+                      ringColor: color
+                    }}
+                    onClick={() => setNewRegionColor(color)}
+                  >
+                    {newRegionColor === color && (
+                      <Check className="w-4 h-4 text-white mx-auto" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Item Selection */}
+            <div className="space-y-2">
+              <Label>Select Items ({selectedItemIds.length} selected)</Label>
+              <div className="border rounded-lg max-h-48 overflow-y-auto">
+                {items && items.length > 0 ? (
+                  <div className="divide-y">
+                    {items.map((item) => {
+                      const isSelected = selectedItemIds.includes(item.id)
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`
+                            w-full px-3 py-2 text-left flex items-center gap-3 transition-colors
+                            ${isSelected 
+                              ? 'bg-primary/10' 
+                              : 'hover:bg-muted'
+                            }
+                          `}
+                          onClick={() => toggleItemSelection(item.id)}
+                        >
+                          <div className={`
+                            w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
+                            ${isSelected 
+                              ? 'border-primary bg-primary' 
+                              : 'border-muted-foreground/30'
+                            }
+                          `}>
+                            {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{item.title}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{item.item_type}</p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    No items available
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                You can add more items to the region later
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateRegionDialog(false)}
+              disabled={isCreatingRegion}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateRegion}
+              disabled={!newRegionName.trim() || isCreatingRegion}
+              style={{ backgroundColor: newRegionColor }}
+              className="text-white"
+            >
+              {isCreatingRegion ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Region
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {/* Info/Legend Button - Circular like nav items */}
       <div className="absolute bottom-6 right-6 z-40">

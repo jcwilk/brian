@@ -16,6 +16,14 @@ class ItemType(str, Enum):
     PAPER = "paper"
 
 
+class RegionType(str, Enum):
+    """Types of knowledge regions"""
+    MANUAL = "manual"        # User-created via lasso/selection
+    TAG_BASED = "tag-based"  # Auto-generated from tags
+    CLUSTER = "cluster"      # ML clustering based
+    SMART = "smart"          # AI-suggested regions
+
+
 @dataclass
 class KnowledgeItem:
     """A single knowledge item in brian"""
@@ -167,4 +175,69 @@ class Connection:
             strength=row['strength'],
             notes=row.get('notes'),
             created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
+        )
+
+
+@dataclass
+class Region:
+    """A spatial grouping of knowledge items in the graph view"""
+    
+    name: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    description: Optional[str] = None
+    color: str = "#8b5cf6"  # Default purple
+    region_type: RegionType = RegionType.MANUAL
+    bounds_json: Optional[str] = None  # JSON string for polygon/bounds
+    is_visible: bool = True
+    item_ids: List[str] = field(default_factory=list)  # Items in this region
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "color": self.color,
+            "region_type": self.region_type.value if isinstance(self.region_type, RegionType) else self.region_type,
+            "bounds_json": self.bounds_json,
+            "is_visible": self.is_visible,
+            "item_ids": self.item_ids,
+            "item_count": len(self.item_ids),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Region':
+        """Create from dictionary"""
+        # Convert string dates to datetime
+        for date_field in ['created_at', 'updated_at']:
+            if data.get(date_field) and isinstance(data[date_field], str):
+                data[date_field] = datetime.fromisoformat(data[date_field])
+        
+        # Convert region_type string to enum
+        if 'region_type' in data and isinstance(data['region_type'], str):
+            data['region_type'] = RegionType(data['region_type'])
+        
+        # Remove item_count if present (computed field)
+        data.pop('item_count', None)
+        
+        return cls(**data)
+    
+    @classmethod
+    def from_db_row(cls, row: dict, item_ids: List[str] = None) -> 'Region':
+        """Create from database row"""
+        return cls(
+            id=row['id'],
+            name=row['name'],
+            description=row.get('description'),
+            color=row.get('color', '#8b5cf6'),
+            region_type=RegionType(row['region_type']) if row.get('region_type') else RegionType.MANUAL,
+            bounds_json=row.get('bounds_json'),
+            is_visible=bool(row.get('is_visible', True)),
+            item_ids=item_ids or [],
+            created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
+            updated_at=datetime.fromisoformat(row['updated_at']) if row.get('updated_at') else None,
         )

@@ -5,7 +5,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 from .connection import Database
-from ..models import KnowledgeItem, Tag, Connection, ItemType
+from ..models import KnowledgeItem, Tag, Connection, ItemType, Region, RegionType
 
 
 class KnowledgeRepository:
@@ -381,3 +381,183 @@ class ConnectionRepository:
         query = "DELETE FROM connections WHERE id = ?"
         cursor = self.db.execute(query, (connection_id,))
         return cursor.rowcount > 0
+
+
+class RegionRepository:
+    """Repository for knowledge region operations"""
+    
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def create(self, region: Region) -> Region:
+        """Create a new region"""
+        query = """
+            INSERT INTO regions 
+            (id, name, description, color, region_type, bounds_json, is_visible)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        self.db.execute(query, (
+            region.id,
+            region.name,
+            region.description,
+            region.color,
+            region.region_type.value if isinstance(region.region_type, RegionType) else region.region_type,
+            region.bounds_json,
+            region.is_visible
+        ))
+        
+        # Add items to region if provided
+        if region.item_ids:
+            self.add_items(region.id, region.item_ids)
+        
+        return self.get_by_id(region.id)
+    
+    def get_by_id(self, region_id: str) -> Optional[Region]:
+        """Get region by ID with its items"""
+        query = "SELECT * FROM regions WHERE id = ?"
+        row = self.db.fetchone(query, (region_id,))
+        
+        if not row:
+            return None
+        
+        # Get items in this region
+        item_ids = self._get_items_for_region(region_id)
+        
+        return Region.from_db_row(dict(row), item_ids)
+    
+    def get_all(
+        self,
+        region_type: Optional[RegionType] = None,
+        visible_only: bool = False,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Region]:
+        """Get all regions with optional filtering"""
+        query = "SELECT * FROM regions WHERE 1=1"
+        params = []
+        
+        if region_type:
+            query += " AND region_type = ?"
+            params.append(region_type.value)
+        
+        if visible_only:
+            query += " AND is_visible = 1"
+        
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        rows = self.db.fetchall(query, tuple(params))
+        
+        regions = []
+        for row in rows:
+            item_ids = self._get_items_for_region(row['id'])
+            regions.append(Region.from_db_row(dict(row), item_ids))
+        
+        return regions
+    
+    def update(self, region: Region) -> Region:
+        """Update a region"""
+        query = """
+            UPDATE regions 
+            SET name = ?, description = ?, color = ?, region_type = ?,
+                bounds_json = ?, is_visible = ?
+            WHERE id = ?
+        """
+        self.db.execute(query, (
+            region.name,
+            region.description,
+            region.color,
+            region.region_type.value if isinstance(region.region_type, RegionType) else region.region_type,
+            region.bounds_json,
+            region.is_visible,
+            region.id
+        ))
+        
+        return self.get_by_id(region.id)
+    
+    def delete(self, region_id: str) -> bool:
+        """Delete a region (items are automatically unlinked via CASCADE)"""
+        query = "DELETE FROM regions WHERE id = ?"
+        cursor = self.db.execute(query, (region_id,))
+        return cursor.rowcount > 0
+    
+    def add_items(self, region_id: str, item_ids: List[str]) -> bool:
+        """Add items to a region"""
+        query = "INSERT OR IGNORE INTO region_items (region_id, item_id) VALUES (?, ?)"
+        for item_id in item_ids:
+            self.db.execute(query, (region_id, item_id))
+        return True
+    
+    def remove_item(self, region_id: str, item_id: str) -> bool:
+        """Remove an item from a region"""
+        query = "DELETE FROM region_items WHERE region_id = ? AND item_id = ?"
+        cursor = self.db.execute(query, (region_id, item_id))
+        return cursor.rowcount > 0
+    
+    def clear_items(self, region_id: str) -> bool:
+        """Remove all items from a region"""
+        query = "DELETE FROM region_items WHERE region_id = ?"
+        self.db.execute(query, (region_id,))
+        return True
+    
+    def set_items(self, region_id: str, item_ids: List[str]) -> bool:
+        """Replace all items in a region"""
+        self.clear_items(region_id)
+        return self.add_items(region_id, item_ids)
+    
+    def get_regions_for_item(self, item_id: str) -> List[Region]:
+        """Get all regions that contain a specific item"""
+        query = """
+            SELECT r.* FROM regions r
+            JOIN region_items ri ON r.id = ri.region_id
+            WHERE ri.item_id = ?
+            ORDER BY r.name
+        """
+        rows = self.db.fetchall(query, (item_id,))
+        
+        regions = []
+        for row in rows:
+            item_ids = self._get_items_for_region(row['id'])
+            regions.append(Region.from_db_row(dict(row), item_ids))
+        
+        return regions
+    
+    def toggle_visibility(self, region_id: str) -> bool:
+        """Toggle region visibility"""
+        region = self.get_by_id(region_id)
+        if not region:
+            return False
+        
+        query = "UPDATE regions SET is_visible = ? WHERE id = ?"
+        self.db.execute(query, (not region.is_visible, region_id))
+        return True
+    
+    def _get_items_for_region(self, region_id: str) -> List[str]:
+        """Get all item IDs in a region"""
+        query = "SELECT item_id FROM region_items WHERE region_id = ?"
+        rows = self.db.fetchall(query, (region_id,))
+        return [row['item_id'] for row in rows]
+    
+    def get_items_with_details(self, region_id: str) -> List[KnowledgeItem]:
+        """Get full item details for all items in a region"""
+        query = """
+            SELECT ki.* FROM knowledge_items ki
+            JOIN region_items ri ON ki.id = ri.item_id
+            WHERE ri.region_id = ?
+            ORDER BY ki.created_at DESC
+        """
+        rows = self.db.fetchall(query, (region_id,))
+        
+        items = []
+        for row in rows:
+            # Get tags for each item
+            tags_query = """
+                SELECT t.name FROM tags t
+                JOIN item_tags it ON t.id = it.tag_id
+                WHERE it.item_id = ?
+            """
+            tag_rows = self.db.fetchall(tags_query, (row['id'],))
+            tags = [tr['name'] for tr in tag_rows]
+            items.append(KnowledgeItem.from_db_row(dict(row), tags))
+        
+        return items
