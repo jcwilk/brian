@@ -25,6 +25,11 @@ export const useStore = create((set, get) => ({
     favorites: 0,
   },
   
+  // Regions state
+  regions: [],
+  selectedRegion: null,
+  regionsLoading: false,
+  
   // UI state
   currentView: 'feed',
   isModalOpen: false,
@@ -153,6 +158,141 @@ export const useStore = create((set, get) => ({
       set({ stats })
     } catch (error) {
       console.error('Failed to fetch stats:', error)
+    }
+  },
+
+  // ============================================================================
+  // Region Actions
+  // ============================================================================
+
+  // Set selected region
+  setSelectedRegion: (region) => set({ selectedRegion: region }),
+
+  // Fetch all regions
+  fetchRegions: async (filters = {}) => {
+    set({ regionsLoading: true })
+    try {
+      const regions = await api.getRegions(filters)
+      set({ regions, regionsLoading: false })
+    } catch (error) {
+      console.error('Failed to fetch regions:', error)
+      set({ regionsLoading: false })
+    }
+  },
+
+  // Fetch single region
+  fetchRegion: async (id) => {
+    try {
+      const region = await api.getRegion(id)
+      set({ selectedRegion: region })
+      return region
+    } catch (error) {
+      console.error('Failed to fetch region:', error)
+      return null
+    }
+  },
+
+  // Create region
+  createRegion: async (data) => {
+    set({ regionsLoading: true })
+    try {
+      const region = await api.createRegion(data)
+      await get().fetchRegions()
+      set({ regionsLoading: false })
+      return region
+    } catch (error) {
+      console.error('Failed to create region:', error)
+      set({ regionsLoading: false })
+      return null
+    }
+  },
+
+  // Update region
+  updateRegion: async (id, data) => {
+    try {
+      const region = await api.updateRegion(id, data)
+      await get().fetchRegions()
+      // Update selectedRegion if it's the one being updated
+      if (get().selectedRegion?.id === id) {
+        set({ selectedRegion: region })
+      }
+      return region
+    } catch (error) {
+      console.error('Failed to update region:', error)
+      return null
+    }
+  },
+
+  // Delete region
+  deleteRegion: async (id) => {
+    try {
+      await api.deleteRegion(id)
+      await get().fetchRegions()
+      // Clear selectedRegion if it's the one being deleted
+      if (get().selectedRegion?.id === id) {
+        set({ selectedRegion: null })
+      }
+      return true
+    } catch (error) {
+      console.error('Failed to delete region:', error)
+      return false
+    }
+  },
+
+  // Add items to region
+  addItemsToRegion: async (regionId, itemIds) => {
+    try {
+      const region = await api.addItemsToRegion(regionId, itemIds)
+      await get().fetchRegions()
+      if (get().selectedRegion?.id === regionId) {
+        set({ selectedRegion: region })
+      }
+      return region
+    } catch (error) {
+      console.error('Failed to add items to region:', error)
+      return null
+    }
+  },
+
+  // Remove item from region
+  removeItemFromRegion: async (regionId, itemId) => {
+    try {
+      await api.removeItemFromRegion(regionId, itemId)
+      await get().fetchRegions()
+      // Refresh selectedRegion if needed
+      if (get().selectedRegion?.id === regionId) {
+        const region = await api.getRegion(regionId)
+        set({ selectedRegion: region })
+      }
+      return true
+    } catch (error) {
+      console.error('Failed to remove item from region:', error)
+      return false
+    }
+  },
+
+  // Toggle region visibility
+  toggleRegionVisibility: async (id) => {
+    try {
+      const region = await api.toggleRegionVisibility(id)
+      await get().fetchRegions()
+      if (get().selectedRegion?.id === id) {
+        set({ selectedRegion: region })
+      }
+      return region
+    } catch (error) {
+      console.error('Failed to toggle region visibility:', error)
+      return null
+    }
+  },
+
+  // Get regions for a specific item
+  getItemRegions: async (itemId) => {
+    try {
+      return await api.getItemRegions(itemId)
+    } catch (error) {
+      console.error('Failed to get item regions:', error)
+      return []
     }
   },
 }))

@@ -17,10 +17,10 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from brian.database.connection import Database
-from brian.database.repository import KnowledgeRepository
+from brian.database.repository import KnowledgeRepository, RegionRepository
 from brian.services.similarity import SimilarityService
 from brian.services.link_preview import fetch_link_metadata, is_google_doc
-from brian.models.knowledge_item import KnowledgeItem, ItemType
+from brian.models.knowledge_item import KnowledgeItem, ItemType, Region, RegionType
 
 from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
@@ -41,21 +41,21 @@ from mcp.types import (
 # Initialize server
 server = Server("brian-knowledge")
 
-# Global repository instance
+# Global repository instances
 repo: Optional[KnowledgeRepository] = None
+region_repo: Optional[RegionRepository] = None
 similarity_service: Optional[SimilarityService] = None
-
-
 
 
 def init_services():
     """Initialize database connection and services"""
-    global repo, similarity_service
+    global repo, region_repo, similarity_service
     db_path = os.path.expanduser("~/.brian/brian.db")
     db = Database(db_path)
     # Don't call initialize() - it breaks FTS queries in autocommit mode
     # The database should already be initialized by the web app
     repo = KnowledgeRepository(db)
+    region_repo = RegionRepository(db)
     similarity_service = SimilarityService()
 
 
@@ -418,6 +418,123 @@ For simple web links without document content:
                     }
                 },
                 "required": ["item_id"]
+            }
+        ),
+        # Region tools
+        Tool(
+            name="list_regions",
+            description="List all knowledge regions. Regions are named groupings of related knowledge items that can be used to scope queries and provide organizational context.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_hidden": {
+                        "type": "boolean",
+                        "description": "Include hidden regions (default: false)",
+                        "default": False
+                    }
+                }
+            }
+        ),
+        Tool(
+            name="get_region",
+            description="Get details of a specific region including its items.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "region_id": {
+                        "type": "string",
+                        "description": "ID of the region to retrieve"
+                    }
+                },
+                "required": ["region_id"]
+            }
+        ),
+        Tool(
+            name="get_region_context",
+            description="Get knowledge context from a specific region. Returns all items in the region with their full content, useful for scoped queries.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "region_id": {
+                        "type": "string",
+                        "description": "ID of the region to get context from"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional query to filter/rank items within the region"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of items to return (default: all)",
+                        "default": 50
+                    }
+                },
+                "required": ["region_id"]
+            }
+        ),
+        Tool(
+            name="suggest_regions",
+            description="Suggest which regions are most relevant for a given query or topic. Helps route questions to the right knowledge context.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Query or topic to find relevant regions for"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of regions to suggest (default: 3)",
+                        "default": 3
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="create_region",
+            description="Create a new knowledge region to group related items.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the region"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of what this region contains"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Hex color code for the region (e.g., '#8b5cf6')"
+                    },
+                    "item_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "IDs of items to include in the region"
+                    }
+                },
+                "required": ["name"]
+            }
+        ),
+        Tool(
+            name="add_items_to_region",
+            description="Add items to an existing region.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "region_id": {
+                        "type": "string",
+                        "description": "ID of the region"
+                    },
+                    "item_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "IDs of items to add"
+                    }
+                },
+                "required": ["region_id", "item_ids"]
             }
         ),
     ]
@@ -905,6 +1022,235 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         
         if len(target_item.content) < 100:
             response["recommendations"].append("⚠️ Content is very short - may affect similarity calculations")
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    # Region tool handlers
+    elif name == "list_regions":
+        include_hidden = arguments.get("include_hidden", False)
+        
+        regions = region_repo.get_all(visible_only=not include_hidden)
+        
+        response = {
+            "count": len(regions),
+            "regions": [r.to_dict() for r in regions]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "get_region":
+        region_id = arguments["region_id"]
+        region = region_repo.get_by_id(region_id)
+        
+        if not region:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Region {region_id} not found"})
+            )]
+        
+        # Get items with details
+        items = region_repo.get_items_with_details(region_id)
+        
+        response = {
+            "region": region.to_dict(),
+            "items": [{
+                "id": item.id,
+                "title": item.title,
+                "type": str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type),
+                "tags": item.tags,
+                "content_preview": item.content[:200] + "..." if len(item.content) > 200 else item.content
+            } for item in items]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "get_region_context":
+        region_id = arguments["region_id"]
+        query = arguments.get("query")
+        limit = arguments.get("limit", 50)
+        
+        region = region_repo.get_by_id(region_id)
+        if not region:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Region {region_id} not found"})
+            )]
+        
+        # Get all items in the region with full details
+        items = region_repo.get_items_with_details(region_id)
+        
+        # If query provided, rank items by relevance
+        if query and items:
+            items_dict = [{
+                'id': item.id,
+                'title': item.title,
+                'content': item.content,
+                'tags': item.tags or []
+            } for item in items]
+            
+            # Build index and score items
+            similarity_service.build_index(items_dict)
+            
+            # Create a pseudo-item for the query
+            query_dict = {'id': 'query', 'title': query, 'content': query, 'tags': []}
+            
+            scored_items = []
+            for item, item_dict in zip(items, items_dict):
+                score = similarity_service.get_similarity_score(query_dict, item_dict)
+                scored_items.append((item, score))
+            
+            # Sort by score and limit
+            scored_items.sort(key=lambda x: x[1], reverse=True)
+            items = [item for item, score in scored_items[:limit]]
+        else:
+            items = items[:limit]
+        
+        response = {
+            "region": {
+                "id": region.id,
+                "name": region.name,
+                "description": region.description,
+                "color": region.color,
+                "type": region.region_type
+            },
+            "item_count": len(items),
+            "items": [{
+                "id": item.id,
+                "title": item.title,
+                "content": item.content,  # Full content for context
+                "type": str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type),
+                "tags": item.tags,
+                "url": item.url
+            } for item in items]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "suggest_regions":
+        query = arguments["query"]
+        limit = arguments.get("limit", 3)
+        
+        regions = region_repo.get_all(visible_only=True)
+        
+        if not regions:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"count": 0, "suggestions": [], "message": "No regions found"})
+            )]
+        
+        # Score each region by relevance to the query
+        scored_regions = []
+        
+        for region in regions:
+            score = 0.0
+            
+            # Check name match
+            if query.lower() in region.name.lower():
+                score += 0.5
+            
+            # Check description match
+            if region.description and query.lower() in region.description.lower():
+                score += 0.3
+            
+            # Get items and check content relevance
+            items = region_repo.get_items_with_details(region.id)
+            if items:
+                # Check if query terms appear in item titles/tags
+                query_terms = query.lower().split()
+                for item in items:
+                    for term in query_terms:
+                        if term in item.title.lower():
+                            score += 0.1
+                        if item.tags and any(term in tag.lower() for tag in item.tags):
+                            score += 0.05
+            
+            if score > 0:
+                scored_regions.append((region, score, len(items)))
+        
+        # Sort by score
+        scored_regions.sort(key=lambda x: x[1], reverse=True)
+        
+        response = {
+            "query": query,
+            "count": min(len(scored_regions), limit),
+            "suggestions": [{
+                "region_id": region.id,
+                "name": region.name,
+                "description": region.description,
+                "color": region.color,
+                "item_count": item_count,
+                "relevance_score": round(score, 3)
+            } for region, score, item_count in scored_regions[:limit]]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "create_region":
+        name = arguments["name"]
+        description = arguments.get("description", "")
+        color = arguments.get("color", "#8b5cf6")  # Default purple
+        item_ids = arguments.get("item_ids", [])
+        
+        region = Region(
+            name=name,
+            description=description,
+            color=color,
+            region_type=RegionType.MANUAL,
+            item_ids=item_ids
+        )
+        
+        created_region = region_repo.create(region)
+        
+        # Add items if provided
+        if item_ids:
+            region_repo.set_items(created_region.id, item_ids)
+        
+        response = {
+            "success": True,
+            "region": created_region.to_dict()
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "add_items_to_region":
+        region_id = arguments["region_id"]
+        item_ids = arguments["item_ids"]
+        
+        region = region_repo.get_by_id(region_id)
+        if not region:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Region {region_id} not found"})
+            )]
+        
+        region_repo.add_items(region_id, item_ids)
+        
+        # Get updated region
+        updated_region = region_repo.get_by_id(region_id)
+        
+        response = {
+            "success": True,
+            "region": updated_region.to_dict(),
+            "added_count": len(item_ids)
+        }
         
         return [TextContent(
             type="text",

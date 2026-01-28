@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime
 
-from ..models import KnowledgeItem, Tag, Connection, ItemType
+from ..models import KnowledgeItem, Tag, Connection, ItemType, Region, RegionType
 from ..database import Database
-from ..database.repository import KnowledgeRepository, TagRepository, ConnectionRepository
+from ..database.repository import KnowledgeRepository, TagRepository, ConnectionRepository, RegionRepository
 from ..services import SimilarityService
 
 # Create router
@@ -24,7 +24,8 @@ def get_repositories():
     return (
         KnowledgeRepository(db),
         TagRepository(db),
-        ConnectionRepository(db)
+        ConnectionRepository(db),
+        RegionRepository(db)
     )
 
 
@@ -35,7 +36,7 @@ def get_repositories():
 @router.post("/items", response_model=dict, status_code=201)
 async def create_item(item: dict):
     """Create a new knowledge item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     try:
         # Parse created_at if provided
@@ -76,7 +77,7 @@ async def get_items(
     sort_order: str = "DESC"
 ):
     """Get all knowledge items with filtering and pagination"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     type_filter = ItemType(item_type) if item_type else None
     items = repo.get_all(
@@ -94,7 +95,7 @@ async def get_items(
 @router.get("/items/{item_id}", response_model=dict)
 async def get_item(item_id: str):
     """Get a specific knowledge item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     item = repo.get_by_id(item_id)
     if not item:
@@ -106,7 +107,7 @@ async def get_item(item_id: str):
 @router.put("/items/{item_id}", response_model=dict)
 async def update_item(item_id: str, item_data: dict):
     """Update a knowledge item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     # Get existing item
     existing = repo.get_by_id(item_id)
@@ -132,7 +133,7 @@ async def update_item(item_id: str, item_data: dict):
 @router.delete("/items/{item_id}", status_code=204)
 async def delete_item(item_id: str):
     """Delete a knowledge item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     success = repo.delete(item_id)
     if not success:
@@ -144,7 +145,7 @@ async def delete_item(item_id: str):
 @router.post("/items/{item_id}/favorite", response_model=dict)
 async def toggle_favorite(item_id: str):
     """Toggle favorite status"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     success = repo.toggle_favorite(item_id)
     if not success:
@@ -157,7 +158,7 @@ async def toggle_favorite(item_id: str):
 @router.post("/items/{item_id}/vote", response_model=dict)
 async def vote_item(item_id: str, direction: str = Query(..., pattern="^(up|down)$")):
     """Vote on an item (up or down)"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     if direction == "up":
         vote_count = repo.increment_vote(item_id)
@@ -174,7 +175,7 @@ async def vote_item(item_id: str, direction: str = Query(..., pattern="^(up|down
 @router.patch("/items/{item_id}/position", response_model=dict)
 async def update_position(item_id: str, position_data: dict):
     """Update pinboard position for an item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     # Get existing item
     existing = repo.get_by_id(item_id)
@@ -199,7 +200,7 @@ async def search_items(
     limit: int = Query(50, le=200)
 ):
     """Full-text search across knowledge items"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     items = repo.search(q, limit=limit)
     return [item.to_dict() for item in items]
@@ -215,7 +216,7 @@ async def get_timeline(
     end_date: str = Query(..., description="ISO format date")
 ):
     """Get items within a date range for Time Machine view"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     try:
         start = datetime.fromisoformat(start_date)
@@ -234,7 +235,7 @@ async def get_timeline(
 @router.get("/tags", response_model=List[dict])
 async def get_tags():
     """Get all tags"""
-    _, tag_repo, _ = get_repositories()
+    _, tag_repo, _, _ = get_repositories()
     
     tags = tag_repo.get_all()
     return [tag.to_dict() for tag in tags]
@@ -243,7 +244,7 @@ async def get_tags():
 @router.get("/tags/popular", response_model=List[dict])
 async def get_popular_tags(limit: int = Query(20, le=100)):
     """Get most used tags"""
-    _, tag_repo, _ = get_repositories()
+    _, tag_repo, _, _ = get_repositories()
     
     return tag_repo.get_popular(limit=limit)
 
@@ -255,7 +256,7 @@ async def get_popular_tags(limit: int = Query(20, le=100)):
 @router.post("/connections", response_model=dict, status_code=201)
 async def create_connection(connection_data: dict):
     """Create a connection between two items"""
-    _, _, conn_repo = get_repositories()
+    _, _, conn_repo, _ = get_repositories()
     
     try:
         connection = Connection(
@@ -275,7 +276,7 @@ async def create_connection(connection_data: dict):
 @router.get("/connections/{item_id}", response_model=List[dict])
 async def get_item_connections(item_id: str):
     """Get all connections for an item"""
-    _, _, conn_repo = get_repositories()
+    _, _, conn_repo, _ = get_repositories()
     
     connections = conn_repo.get_for_item(item_id)
     return [conn.to_dict() for conn in connections]
@@ -284,7 +285,7 @@ async def get_item_connections(item_id: str):
 @router.get("/graph", response_model=dict)
 async def get_graph():
     """Get full knowledge graph data for visualization"""
-    _, _, conn_repo = get_repositories()
+    _, _, conn_repo, _ = get_repositories()
     
     return conn_repo.get_graph_data()
 
@@ -292,7 +293,7 @@ async def get_graph():
 @router.delete("/connections/{connection_id}", status_code=204)
 async def delete_connection(connection_id: int):
     """Delete a connection"""
-    _, _, conn_repo = get_repositories()
+    _, _, conn_repo, _ = get_repositories()
     
     success = conn_repo.delete(connection_id)
     if not success:
@@ -308,7 +309,7 @@ async def delete_connection(connection_id: int):
 @router.get("/stats", response_model=dict)
 async def get_stats():
     """Get statistics about the knowledge base"""
-    repo, tag_repo, conn_repo = get_repositories()
+    repo, tag_repo, conn_repo, _ = get_repositories()
     
     # Count items by type
     stats = {
@@ -345,7 +346,7 @@ async def get_similarity_connections(
     Compute content similarity connections between all items
     Uses TF-IDF and cosine similarity
     """
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     # Get all items
     items = repo.get_all(limit=1000)
@@ -369,7 +370,7 @@ async def get_related_items(
     threshold: float = Query(0.1, ge=0.0, le=1.0)
 ):
     """Get the most similar items to a specific item"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     # Get target item
     target_item = repo.get_by_id(item_id)
@@ -406,7 +407,7 @@ async def compute_similarity_score(
     item2_id: str = Query(..., description="Second item ID")
 ):
     """Compute similarity score between two specific items"""
-    repo, _, _ = get_repositories()
+    repo, _, _, _ = get_repositories()
     
     # Get both items
     item1 = repo.get_by_id(item1_id)
@@ -431,4 +432,172 @@ async def compute_similarity_score(
     }
 
 
+# ============================================================================
+# Knowledge Regions Endpoints
+# ============================================================================
+
+@router.post("/regions", response_model=dict, status_code=201)
+async def create_region(region_data: dict):
+    """Create a new knowledge region"""
+    _, _, _, region_repo = get_repositories()
+    
+    try:
+        region = Region(
+            name=region_data["name"],
+            description=region_data.get("description"),
+            color=region_data.get("color", "#8b5cf6"),
+            region_type=RegionType(region_data.get("region_type", "manual")),
+            bounds_json=region_data.get("bounds_json"),
+            is_visible=region_data.get("is_visible", True),
+            item_ids=region_data.get("item_ids", [])
+        )
+        
+        created = region_repo.create(region)
+        return created.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/regions", response_model=List[dict])
+async def get_regions(
+    region_type: Optional[str] = None,
+    visible_only: bool = False,
+    limit: int = Query(100, le=500),
+    offset: int = 0
+):
+    """Get all regions with optional filtering"""
+    _, _, _, region_repo = get_repositories()
+    
+    type_filter = RegionType(region_type) if region_type else None
+    regions = region_repo.get_all(
+        region_type=type_filter,
+        visible_only=visible_only,
+        limit=limit,
+        offset=offset
+    )
+    
+    return [region.to_dict() for region in regions]
+
+
+@router.get("/regions/{region_id}", response_model=dict)
+async def get_region(region_id: str):
+    """Get a specific region with its items"""
+    _, _, _, region_repo = get_repositories()
+    
+    region = region_repo.get_by_id(region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    return region.to_dict()
+
+
+@router.get("/regions/{region_id}/items", response_model=List[dict])
+async def get_region_items(region_id: str):
+    """Get full details of all items in a region"""
+    _, _, _, region_repo = get_repositories()
+    
+    region = region_repo.get_by_id(region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    items = region_repo.get_items_with_details(region_id)
+    return [item.to_dict() for item in items]
+
+
+@router.put("/regions/{region_id}", response_model=dict)
+async def update_region(region_id: str, region_data: dict):
+    """Update a region"""
+    _, _, _, region_repo = get_repositories()
+    
+    existing = region_repo.get_by_id(region_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    # Update fields
+    existing.name = region_data.get("name", existing.name)
+    existing.description = region_data.get("description", existing.description)
+    existing.color = region_data.get("color", existing.color)
+    existing.bounds_json = region_data.get("bounds_json", existing.bounds_json)
+    existing.is_visible = region_data.get("is_visible", existing.is_visible)
+    
+    if "region_type" in region_data:
+        existing.region_type = RegionType(region_data["region_type"])
+    
+    updated = region_repo.update(existing)
+    return updated.to_dict()
+
+
+@router.delete("/regions/{region_id}", status_code=204)
+async def delete_region(region_id: str):
+    """Delete a region"""
+    _, _, _, region_repo = get_repositories()
+    
+    success = region_repo.delete(region_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    return None
+
+
+@router.post("/regions/{region_id}/items", response_model=dict)
+async def add_items_to_region(region_id: str, items_data: dict):
+    """Add items to a region"""
+    _, _, _, region_repo = get_repositories()
+    
+    region = region_repo.get_by_id(region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    item_ids = items_data.get("item_ids", [])
+    if not item_ids:
+        raise HTTPException(status_code=400, detail="item_ids is required")
+    
+    region_repo.add_items(region_id, item_ids)
+    
+    # Return updated region
+    updated = region_repo.get_by_id(region_id)
+    return updated.to_dict()
+
+
+@router.delete("/regions/{region_id}/items/{item_id}", status_code=204)
+async def remove_item_from_region(region_id: str, item_id: str):
+    """Remove an item from a region"""
+    _, _, _, region_repo = get_repositories()
+    
+    region = region_repo.get_by_id(region_id)
+    if not region:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    success = region_repo.remove_item(region_id, item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Item not in region")
+    
+    return None
+
+
+@router.post("/regions/{region_id}/visibility", response_model=dict)
+async def toggle_region_visibility(region_id: str):
+    """Toggle region visibility"""
+    _, _, _, region_repo = get_repositories()
+    
+    success = region_repo.toggle_visibility(region_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Region not found")
+    
+    region = region_repo.get_by_id(region_id)
+    return region.to_dict()
+
+
+@router.get("/items/{item_id}/regions", response_model=List[dict])
+async def get_item_regions(item_id: str):
+    """Get all regions that contain a specific item"""
+    repo, _, _, region_repo = get_repositories()
+    
+    # Verify item exists
+    item = repo.get_by_id(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    regions = region_repo.get_regions_for_item(item_id)
+    return [region.to_dict() for region in regions]
 

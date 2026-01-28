@@ -135,6 +135,73 @@ class BrianAPI {
   async getStats() {
     return this.request('/stats')
   }
+
+  // ============================================================================
+  // Regions
+  // ============================================================================
+
+  async getRegions(filters = {}) {
+    const params = new URLSearchParams()
+    
+    if (filters.region_type) params.append('region_type', filters.region_type)
+    if (filters.visible_only) params.append('visible_only', 'true')
+    if (filters.limit) params.append('limit', filters.limit)
+    if (filters.offset) params.append('offset', filters.offset)
+
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return this.request(`/regions${query}`)
+  }
+
+  async getRegion(id) {
+    return this.request(`/regions/${id}`)
+  }
+
+  async getRegionItems(id) {
+    return this.request(`/regions/${id}/items`)
+  }
+
+  async createRegion(data) {
+    return this.request('/regions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async updateRegion(id, data) {
+    return this.request(`/regions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  }
+
+  async deleteRegion(id) {
+    return this.request(`/regions/${id}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async addItemsToRegion(regionId, itemIds) {
+    return this.request(`/regions/${regionId}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ item_ids: itemIds }),
+    })
+  }
+
+  async removeItemFromRegion(regionId, itemId) {
+    return this.request(`/regions/${regionId}/items/${itemId}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async toggleRegionVisibility(id) {
+    return this.request(`/regions/${id}/visibility`, {
+      method: 'POST',
+    })
+  }
+
+  async getItemRegions(itemId) {
+    return this.request(`/items/${itemId}/regions`)
+  }
 }
 
 export const api = new BrianAPI()
