@@ -167,10 +167,10 @@ def _migrate_to_default_project(cursor):
         VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         DEFAULT_PROJECT_ID,
-        "Default Project",
-        "Default knowledge base containing all existing items",
+        "General",
+        "General knowledge base",
         "#8b5cf6",
-        "📚",
+        "🌐",
         True,  # is_default
         False  # is_archived
     ))
