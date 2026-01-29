@@ -240,16 +240,12 @@ export function ProjectSelector() {
       <div className="group relative" ref={buttonRef}>
         <Button 
           size="icon"
-          className={`h-12 w-12 rounded-full shadow-lg transition-colors ${
+          className={`h-12 w-12 rounded-full shadow-lg transition-colors border-2 border-accent-color ${
             isOpen 
               ? 'bg-black hover:bg-gray-800 text-white' 
               : 'bg-card hover:bg-muted text-foreground'
           }`}
           onClick={() => setIsOpen(!isOpen)}
-          style={currentProject?.color ? { 
-            borderWidth: '2px',
-            borderColor: currentProject.color,
-          } : {}}
         >
           {renderProjectIcon(currentProject?.icon, 'w-5 h-5')}
         </Button>
