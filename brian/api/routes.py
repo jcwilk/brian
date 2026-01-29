@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional
 from datetime import datetime
 
-from ..models import KnowledgeItem, Tag, Connection, ItemType, Region, RegionType, RegionProfile, ContextStrategy, PROFILE_TEMPLATES
+from ..models import KnowledgeItem, Tag, Connection, ItemType, Region, RegionType, RegionProfile, ContextStrategy, PROFILE_TEMPLATES, Project, DEFAULT_PROJECT_ID
 from ..database import Database
-from ..database.repository import KnowledgeRepository, TagRepository, ConnectionRepository, RegionRepository, RegionProfileRepository
+from ..database.repository import KnowledgeRepository, TagRepository, ConnectionRepository, RegionRepository, RegionProfileRepository, ProjectRepository
 from ..services import SimilarityService
 from ..services.clustering import ClusteringService
 
@@ -27,7 +27,8 @@ def get_repositories():
         TagRepository(db),
         ConnectionRepository(db),
         RegionRepository(db),
-        RegionProfileRepository(db)
+        RegionProfileRepository(db),
+        ProjectRepository(db)
     )
 
 
@@ -38,7 +39,7 @@ def get_repositories():
 @router.post("/items", response_model=dict, status_code=201)
 async def create_item(item: dict):
     """Create a new knowledge item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, project_repo = get_repositories()
     
     try:
         # Parse created_at if provided
@@ -48,6 +49,12 @@ async def create_item(item: dict):
                 created_at = datetime.fromisoformat(item["created_at"].replace('Z', '+00:00'))
             except (ValueError, AttributeError):
                 pass  # Use default if parsing fails
+        
+        # Get project_id - use provided, or default project
+        project_id = item.get("project_id")
+        if not project_id:
+            default_project = project_repo.get_default()
+            project_id = default_project.id if default_project else DEFAULT_PROJECT_ID
         
         knowledge_item = KnowledgeItem(
             title=item["title"],
@@ -60,7 +67,8 @@ async def create_item(item: dict):
             link_title=item.get("link_title"),
             link_description=item.get("link_description"),
             link_image=item.get("link_image"),
-            link_site_name=item.get("link_site_name")
+            link_site_name=item.get("link_site_name"),
+            project_id=project_id
         )
         
         created = repo.create(knowledge_item)
@@ -76,10 +84,11 @@ async def get_items(
     limit: int = Query(100, le=500),
     offset: int = 0,
     sort_by: str = "created_at",
-    sort_order: str = "DESC"
+    sort_order: str = "DESC",
+    project_id: Optional[str] = None
 ):
     """Get all knowledge items with filtering and pagination"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     type_filter = ItemType(item_type) if item_type else None
     items = repo.get_all(
@@ -88,7 +97,8 @@ async def get_items(
         limit=limit,
         offset=offset,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
+        project_id=project_id
     )
     
     return [item.to_dict() for item in items]
@@ -97,7 +107,7 @@ async def get_items(
 @router.get("/items/{item_id}", response_model=dict)
 async def get_item(item_id: str):
     """Get a specific knowledge item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     item = repo.get_by_id(item_id)
     if not item:
@@ -109,7 +119,7 @@ async def get_item(item_id: str):
 @router.put("/items/{item_id}", response_model=dict)
 async def update_item(item_id: str, item_data: dict):
     """Update a knowledge item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get existing item
     existing = repo.get_by_id(item_id)
@@ -135,7 +145,7 @@ async def update_item(item_id: str, item_data: dict):
 @router.delete("/items/{item_id}", status_code=204)
 async def delete_item(item_id: str):
     """Delete a knowledge item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     success = repo.delete(item_id)
     if not success:
@@ -147,7 +157,7 @@ async def delete_item(item_id: str):
 @router.post("/items/{item_id}/favorite", response_model=dict)
 async def toggle_favorite(item_id: str):
     """Toggle favorite status"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     success = repo.toggle_favorite(item_id)
     if not success:
@@ -160,7 +170,7 @@ async def toggle_favorite(item_id: str):
 @router.post("/items/{item_id}/vote", response_model=dict)
 async def vote_item(item_id: str, direction: str = Query(..., pattern="^(up|down)$")):
     """Vote on an item (up or down)"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     if direction == "up":
         vote_count = repo.increment_vote(item_id)
@@ -177,7 +187,7 @@ async def vote_item(item_id: str, direction: str = Query(..., pattern="^(up|down
 @router.patch("/items/{item_id}/position", response_model=dict)
 async def update_position(item_id: str, position_data: dict):
     """Update pinboard position for an item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get existing item
     existing = repo.get_by_id(item_id)
@@ -199,12 +209,13 @@ async def update_position(item_id: str, position_data: dict):
 @router.get("/search", response_model=List[dict])
 async def search_items(
     q: str = Query(..., min_length=1),
-    limit: int = Query(50, le=200)
+    limit: int = Query(50, le=200),
+    project_id: Optional[str] = None
 ):
     """Full-text search across knowledge items"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
-    items = repo.search(q, limit=limit)
+    items = repo.search(q, limit=limit, project_id=project_id)
     return [item.to_dict() for item in items]
 
 
@@ -218,7 +229,7 @@ async def get_timeline(
     end_date: str = Query(..., description="ISO format date")
 ):
     """Get items within a date range for Time Machine view"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     try:
         start = datetime.fromisoformat(start_date)
@@ -237,7 +248,7 @@ async def get_timeline(
 @router.get("/tags", response_model=List[dict])
 async def get_tags():
     """Get all tags"""
-    _, tag_repo, _, _, _ = get_repositories()
+    _, tag_repo, _, _, _, _ = get_repositories()
     
     tags = tag_repo.get_all()
     return [tag.to_dict() for tag in tags]
@@ -246,7 +257,7 @@ async def get_tags():
 @router.get("/tags/popular", response_model=List[dict])
 async def get_popular_tags(limit: int = Query(20, le=100)):
     """Get most used tags"""
-    _, tag_repo, _, _, _ = get_repositories()
+    _, tag_repo, _, _, _, _ = get_repositories()
     
     return tag_repo.get_popular(limit=limit)
 
@@ -258,7 +269,7 @@ async def get_popular_tags(limit: int = Query(20, le=100)):
 @router.post("/connections", response_model=dict, status_code=201)
 async def create_connection(connection_data: dict):
     """Create a connection between two items"""
-    _, _, conn_repo, _, _ = get_repositories()
+    _, _, conn_repo, _, _, _ = get_repositories()
     
     try:
         connection = Connection(
@@ -278,7 +289,7 @@ async def create_connection(connection_data: dict):
 @router.get("/connections/{item_id}", response_model=List[dict])
 async def get_item_connections(item_id: str):
     """Get all connections for an item"""
-    _, _, conn_repo, _, _ = get_repositories()
+    _, _, conn_repo, _, _, _ = get_repositories()
     
     connections = conn_repo.get_for_item(item_id)
     return [conn.to_dict() for conn in connections]
@@ -287,7 +298,7 @@ async def get_item_connections(item_id: str):
 @router.get("/graph", response_model=dict)
 async def get_graph():
     """Get full knowledge graph data for visualization"""
-    _, _, conn_repo, _, _ = get_repositories()
+    _, _, conn_repo, _, _, _ = get_repositories()
     
     return conn_repo.get_graph_data()
 
@@ -295,7 +306,7 @@ async def get_graph():
 @router.delete("/connections/{connection_id}", status_code=204)
 async def delete_connection(connection_id: int):
     """Delete a connection"""
-    _, _, conn_repo, _, _ = get_repositories()
+    _, _, conn_repo, _, _, _ = get_repositories()
     
     success = conn_repo.delete(connection_id)
     if not success:
@@ -311,7 +322,7 @@ async def delete_connection(connection_id: int):
 @router.get("/stats", response_model=dict)
 async def get_stats():
     """Get statistics about the knowledge base"""
-    repo, tag_repo, conn_repo, _, _ = get_repositories()
+    repo, tag_repo, conn_repo, _, _, _ = get_repositories()
     
     # Count items by type
     stats = {
@@ -348,7 +359,7 @@ async def get_similarity_connections(
     Compute content similarity connections between all items
     Uses TF-IDF and cosine similarity
     """
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get all items
     items = repo.get_all(limit=1000)
@@ -372,7 +383,7 @@ async def get_related_items(
     threshold: float = Query(0.1, ge=0.0, le=1.0)
 ):
     """Get the most similar items to a specific item"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get target item
     target_item = repo.get_by_id(item_id)
@@ -409,7 +420,7 @@ async def compute_similarity_score(
     item2_id: str = Query(..., description="Second item ID")
 ):
     """Compute similarity score between two specific items"""
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get both items
     item1 = repo.get_by_id(item1_id)
@@ -441,7 +452,7 @@ async def compute_similarity_score(
 @router.post("/regions", response_model=dict, status_code=201)
 async def create_region(region_data: dict):
     """Create a new knowledge region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     try:
         region = Region(
@@ -465,17 +476,19 @@ async def get_regions(
     region_type: Optional[str] = None,
     visible_only: bool = False,
     limit: int = Query(100, le=500),
-    offset: int = 0
+    offset: int = 0,
+    project_id: Optional[str] = None
 ):
     """Get all regions with optional filtering"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     type_filter = RegionType(region_type) if region_type else None
     regions = region_repo.get_all(
         region_type=type_filter,
         visible_only=visible_only,
         limit=limit,
-        offset=offset
+        offset=offset,
+        project_id=project_id
     )
     
     return [region.to_dict() for region in regions]
@@ -484,7 +497,7 @@ async def get_regions(
 @router.get("/regions/{region_id}", response_model=dict)
 async def get_region(region_id: str):
     """Get a specific region with its items"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -496,7 +509,7 @@ async def get_region(region_id: str):
 @router.get("/regions/{region_id}/items", response_model=List[dict])
 async def get_region_items(region_id: str):
     """Get full details of all items in a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -509,7 +522,7 @@ async def get_region_items(region_id: str):
 @router.put("/regions/{region_id}", response_model=dict)
 async def update_region(region_id: str, region_data: dict):
     """Update a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     existing = region_repo.get_by_id(region_id)
     if not existing:
@@ -532,7 +545,7 @@ async def update_region(region_id: str, region_data: dict):
 @router.delete("/regions/{region_id}", status_code=204)
 async def delete_region(region_id: str):
     """Delete a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     success = region_repo.delete(region_id)
     if not success:
@@ -544,7 +557,7 @@ async def delete_region(region_id: str):
 @router.post("/regions/{region_id}/items", response_model=dict)
 async def add_items_to_region(region_id: str, items_data: dict):
     """Add items to a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -564,7 +577,7 @@ async def add_items_to_region(region_id: str, items_data: dict):
 @router.delete("/regions/{region_id}/items/{item_id}", status_code=204)
 async def remove_item_from_region(region_id: str, item_id: str):
     """Remove an item from a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -580,7 +593,7 @@ async def remove_item_from_region(region_id: str, item_id: str):
 @router.post("/regions/{region_id}/visibility", response_model=dict)
 async def toggle_region_visibility(region_id: str):
     """Toggle region visibility"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     success = region_repo.toggle_visibility(region_id)
     if not success:
@@ -593,7 +606,7 @@ async def toggle_region_visibility(region_id: str):
 @router.get("/items/{item_id}/regions", response_model=List[dict])
 async def get_item_regions(item_id: str):
     """Get all regions that contain a specific item"""
-    repo, _, _, region_repo, _ = get_repositories()
+    repo, _, _, region_repo, _, _ = get_repositories()
     
     # Verify item exists
     item = repo.get_by_id(item_id)
@@ -637,7 +650,7 @@ async def suggest_clusters(
     - Keywords for each cluster
     - Items that would belong to each cluster
     """
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     # Get all items
     items = repo.get_all(limit=1000)
@@ -696,7 +709,7 @@ async def generate_cluster_regions(
     
     Returns created regions.
     """
-    repo, _, _, region_repo, _ = get_repositories()
+    repo, _, _, region_repo, _, _ = get_repositories()
     
     n_clusters = options.get("n_clusters")
     max_clusters = options.get("max_clusters", 8)
@@ -760,7 +773,7 @@ async def get_optimal_cluster_count(
     - elbow: Finds the "elbow" point where adding clusters has diminishing returns
     - silhouette: Maximizes cluster cohesion and separation
     """
-    repo, _, _, _, _ = get_repositories()
+    repo, _, _, _, _, _ = get_repositories()
     
     items = repo.get_all(limit=1000)
     if len(items) < 3:
@@ -793,7 +806,7 @@ async def get_optimal_cluster_count(
 @router.post("/profiles", response_model=dict, status_code=201)
 async def create_profile(profile_data: dict):
     """Create a new region profile"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     try:
         # Handle context_strategy enum conversion
@@ -824,7 +837,7 @@ async def create_profile(profile_data: dict):
 @router.get("/profiles", response_model=List[dict])
 async def get_profiles():
     """Get all region profiles"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     profiles = profile_repo.get_all()
     return [profile.to_dict() for profile in profiles]
@@ -846,7 +859,7 @@ async def get_profile_templates():
 @router.get("/profiles/{profile_id}", response_model=dict)
 async def get_profile(profile_id: str):
     """Get a specific region profile"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     profile = profile_repo.get_by_id(profile_id)
     if not profile:
@@ -858,7 +871,7 @@ async def get_profile(profile_id: str):
 @router.put("/profiles/{profile_id}", response_model=dict)
 async def update_profile(profile_id: str, profile_data: dict):
     """Update a region profile"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     existing = profile_repo.get_by_id(profile_id)
     if not existing:
@@ -887,7 +900,7 @@ async def update_profile(profile_id: str, profile_data: dict):
 @router.delete("/profiles/{profile_id}", status_code=204)
 async def delete_profile(profile_id: str):
     """Delete a region profile"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     success = profile_repo.delete(profile_id)
     if not success:
@@ -899,7 +912,7 @@ async def delete_profile(profile_id: str):
 @router.post("/profiles/{profile_id}/default", response_model=dict)
 async def set_default_profile(profile_id: str):
     """Set a profile as the default"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     profile = profile_repo.get_by_id(profile_id)
     if not profile:
@@ -915,7 +928,7 @@ async def set_default_profile(profile_id: str):
 @router.get("/profiles/{profile_id}/regions", response_model=List[dict])
 async def get_profile_regions(profile_id: str):
     """Get all regions using a specific profile"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     profile = profile_repo.get_by_id(profile_id)
     if not profile:
@@ -928,7 +941,7 @@ async def get_profile_regions(profile_id: str):
 @router.post("/profiles/from-template", response_model=dict, status_code=201)
 async def create_profile_from_template(template_data: dict):
     """Create a new profile from a preset template"""
-    _, _, _, _, profile_repo = get_repositories()
+    _, _, _, _, profile_repo, _ = get_repositories()
     
     template_key = template_data.get("template_key")
     custom_name = template_data.get("name")
@@ -956,7 +969,7 @@ async def create_profile_from_template(template_data: dict):
 @router.get("/regions/{region_id}/profile", response_model=dict)
 async def get_region_profile(region_id: str):
     """Get the profile assigned to a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -972,7 +985,7 @@ async def get_region_profile(region_id: str):
 @router.put("/regions/{region_id}/profile", response_model=dict)
 async def assign_region_profile(region_id: str, profile_data: dict):
     """Assign a profile to a region"""
-    _, _, _, region_repo, profile_repo = get_repositories()
+    _, _, _, region_repo, profile_repo, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -1001,7 +1014,7 @@ async def assign_region_profile(region_id: str, profile_data: dict):
 @router.delete("/regions/{region_id}/profile", status_code=204)
 async def remove_region_profile(region_id: str):
     """Remove the profile from a region"""
-    _, _, _, region_repo, _ = get_repositories()
+    _, _, _, region_repo, _, _ = get_repositories()
     
     region = region_repo.get_by_id(region_id)
     if not region:
@@ -1010,3 +1023,189 @@ async def remove_region_profile(region_id: str):
     region_repo.set_profile(region_id, None)
     return None
 
+
+
+# ============================================================================
+# Projects (Knowledge Bases) Endpoints
+# ============================================================================
+
+@router.post("/projects", response_model=dict, status_code=201)
+async def create_project(project_data: dict):
+    """Create a new project (knowledge base)"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    try:
+        project = Project(
+            name=project_data["name"],
+            description=project_data.get("description"),
+            color=project_data.get("color", "#8b5cf6"),
+            icon=project_data.get("icon"),
+            is_default=project_data.get("is_default", False),
+            is_archived=project_data.get("is_archived", False)
+        )
+        
+        created = project_repo.create(project)
+        return created.to_dict()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/projects", response_model=List[dict])
+async def get_projects(
+    include_archived: bool = False,
+    limit: int = Query(100, le=500),
+    offset: int = 0
+):
+    """Get all projects with optional filtering"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    projects = project_repo.get_all(
+        include_archived=include_archived,
+        limit=limit,
+        offset=offset
+    )
+    
+    return [project.to_dict() for project in projects]
+
+
+@router.get("/projects/default", response_model=dict)
+async def get_default_project():
+    """Get the default project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_default()
+    if not project:
+        raise HTTPException(status_code=404, detail="No default project found")
+    
+    return project.to_dict()
+
+
+@router.get("/projects/{project_id}", response_model=dict)
+async def get_project(project_id: str):
+    """Get a specific project with counts"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    return project.to_dict()
+
+
+@router.get("/projects/{project_id}/stats", response_model=dict)
+async def get_project_stats(project_id: str):
+    """Get detailed statistics for a project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    stats = project_repo.get_stats(project_id)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    return stats
+
+
+@router.put("/projects/{project_id}", response_model=dict)
+async def update_project(project_id: str, project_data: dict):
+    """Update a project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    existing = project_repo.get_by_id(project_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Update fields
+    existing.name = project_data.get("name", existing.name)
+    existing.description = project_data.get("description", existing.description)
+    existing.color = project_data.get("color", existing.color)
+    existing.icon = project_data.get("icon", existing.icon)
+    existing.is_default = project_data.get("is_default", existing.is_default)
+    existing.is_archived = project_data.get("is_archived", existing.is_archived)
+    
+    updated = project_repo.update(existing)
+    return updated.to_dict()
+
+
+@router.delete("/projects/{project_id}", status_code=204)
+async def delete_project(project_id: str):
+    """Delete a project (cannot delete default project)"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    if project.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete the default project")
+    
+    success = project_repo.delete(project_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete project")
+    
+    return None
+
+
+@router.post("/projects/{project_id}/default", response_model=dict)
+async def set_default_project(project_id: str):
+    """Set a project as the default"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project_repo.set_default(project_id)
+    
+    # Return updated project
+    updated = project_repo.get_by_id(project_id)
+    return updated.to_dict()
+
+
+@router.post("/projects/{project_id}/archive", response_model=dict)
+async def archive_project(project_id: str):
+    """Archive a project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    if project.is_default:
+        raise HTTPException(status_code=400, detail="Cannot archive the default project")
+    
+    project_repo.archive(project_id)
+    
+    # Return updated project
+    updated = project_repo.get_by_id(project_id)
+    return updated.to_dict()
+
+
+@router.post("/projects/{project_id}/unarchive", response_model=dict)
+async def unarchive_project(project_id: str):
+    """Unarchive a project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project_repo.unarchive(project_id)
+    
+    # Return updated project
+    updated = project_repo.get_by_id(project_id)
+    return updated.to_dict()
+
+
+@router.post("/projects/{project_id}/access", response_model=dict)
+async def update_project_access(project_id: str):
+    """Update the last_accessed_at timestamp for a project"""
+    _, _, _, _, _, project_repo = get_repositories()
+    
+    project = project_repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    project_repo.update_last_accessed(project_id)
+    
+    # Return updated project
+    updated = project_repo.get_by_id(project_id)
+    return updated.to_dict()

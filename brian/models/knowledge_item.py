@@ -33,6 +33,81 @@ class ContextStrategy(str, Enum):
     GRAPH_TRAVERSAL = "graph_traversal"  # Follow similarity connections
 
 
+# Default project ID for migration compatibility
+DEFAULT_PROJECT_ID = "00000000-0000-0000-0000-000000000001"
+
+
+@dataclass
+class Project:
+    """
+    A project represents a separate knowledge base.
+    Projects allow users to organize knowledge into distinct, isolated collections.
+    """
+    
+    name: str
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    description: Optional[str] = None
+    color: str = "#8b5cf6"  # Default purple
+    icon: Optional[str] = None  # Emoji icon
+    is_default: bool = False
+    is_archived: bool = False
+    last_accessed_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    # Computed fields (not stored in DB)
+    item_count: int = 0
+    region_count: int = 0
+    profile_count: int = 0
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "color": self.color,
+            "icon": self.icon,
+            "is_default": self.is_default,
+            "is_archived": self.is_archived,
+            "last_accessed_at": self.last_accessed_at.isoformat() if self.last_accessed_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "item_count": self.item_count,
+            "region_count": self.region_count,
+            "profile_count": self.profile_count,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Project':
+        """Create from dictionary"""
+        # Convert string dates to datetime
+        for date_field in ['created_at', 'updated_at', 'last_accessed_at']:
+            if data.get(date_field) and isinstance(data[date_field], str):
+                data[date_field] = datetime.fromisoformat(data[date_field])
+        
+        return cls(**data)
+    
+    @classmethod
+    def from_db_row(cls, row: dict, item_count: int = 0, region_count: int = 0, profile_count: int = 0) -> 'Project':
+        """Create from database row"""
+        return cls(
+            id=row['id'],
+            name=row['name'],
+            description=row.get('description'),
+            color=row.get('color', '#8b5cf6'),
+            icon=row.get('icon'),
+            is_default=bool(row.get('is_default', False)),
+            is_archived=bool(row.get('is_archived', False)),
+            last_accessed_at=datetime.fromisoformat(row['last_accessed_at']) if row.get('last_accessed_at') else None,
+            created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
+            updated_at=datetime.fromisoformat(row['updated_at']) if row.get('updated_at') else None,
+            item_count=item_count,
+            region_count=region_count,
+            profile_count=profile_count,
+        )
+
+
 @dataclass
 class KnowledgeItem:
     """A single knowledge item in brian"""
@@ -57,6 +132,8 @@ class KnowledgeItem:
     # Pinboard position
     pinboard_x: Optional[float] = None
     pinboard_y: Optional[float] = None
+    # Project association
+    project_id: Optional[str] = None
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization"""
@@ -79,6 +156,7 @@ class KnowledgeItem:
             "link_site_name": self.link_site_name,
             "pinboard_x": self.pinboard_x,
             "pinboard_y": self.pinboard_y,
+            "project_id": self.project_id,
         }
     
     @classmethod
@@ -117,6 +195,7 @@ class KnowledgeItem:
             link_site_name=row.get('link_site_name'),
             pinboard_x=row.get('pinboard_x'),
             pinboard_y=row.get('pinboard_y'),
+            project_id=row.get('project_id'),
         )
 
 
@@ -200,6 +279,7 @@ class Region:
     is_visible: bool = True
     item_ids: List[str] = field(default_factory=list)  # Items in this region
     profile_id: Optional[str] = None  # Associated region profile
+    project_id: Optional[str] = None  # Associated project
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -216,6 +296,7 @@ class Region:
             "item_ids": self.item_ids,
             "item_count": len(self.item_ids),
             "profile_id": self.profile_id,
+            "project_id": self.project_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -250,6 +331,7 @@ class Region:
             is_visible=bool(row.get('is_visible', True)),
             item_ids=item_ids or [],
             profile_id=row.get('profile_id'),
+            project_id=row.get('project_id'),
             created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
             updated_at=datetime.fromisoformat(row['updated_at']) if row.get('updated_at') else None,
         )
@@ -289,6 +371,7 @@ class RegionProfile:
     
     # Metadata
     is_default: bool = False
+    project_id: Optional[str] = None  # Associated project
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -307,6 +390,7 @@ class RegionProfile:
             "tools_config": self.tools_config,
             "recipe_path": self.recipe_path,
             "is_default": self.is_default,
+            "project_id": self.project_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
@@ -341,6 +425,7 @@ class RegionProfile:
             tools_config=row.get('tools_config'),
             recipe_path=row.get('recipe_path'),
             is_default=bool(row.get('is_default', False)),
+            project_id=row.get('project_id'),
             created_at=datetime.fromisoformat(row['created_at']) if row.get('created_at') else None,
             updated_at=datetime.fromisoformat(row['updated_at']) if row.get('updated_at') else None,
         )

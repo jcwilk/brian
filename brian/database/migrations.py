@@ -1,6 +1,10 @@
 """
 Database migrations for brian
 """
+import uuid
+
+# Default project ID for migration - consistent UUID for existing data
+DEFAULT_PROJECT_ID = "00000000-0000-0000-0000-000000000001"
 
 MIGRATIONS = {
     2: [
@@ -78,6 +82,41 @@ MIGRATIONS = {
                UPDATE region_profiles SET updated_at = CURRENT_TIMESTAMP
                WHERE id = NEW.id;
            END""",
+    ],
+    6: [
+        # Add projects table for multi-project knowledge bases
+        """CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            color TEXT DEFAULT '#8b5cf6',
+            icon TEXT,
+            is_default BOOLEAN DEFAULT FALSE,
+            is_archived BOOLEAN DEFAULT FALSE,
+            last_accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # Add project_id to knowledge_items
+        "ALTER TABLE knowledge_items ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL",
+        # Add project_id to regions
+        "ALTER TABLE regions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL",
+        # Add project_id to region_profiles
+        "ALTER TABLE region_profiles ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL",
+        # Indexes for project_id columns
+        "CREATE INDEX IF NOT EXISTS idx_items_project ON knowledge_items(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_regions_project ON regions(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_profiles_project ON region_profiles(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_projects_default ON projects(is_default)",
+        "CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(is_archived)",
+        "CREATE INDEX IF NOT EXISTS idx_projects_accessed ON projects(last_accessed_at DESC)",
+        # Trigger for projects updated_at
+        """CREATE TRIGGER IF NOT EXISTS update_projects_timestamp 
+           AFTER UPDATE ON projects
+           BEGIN
+               UPDATE projects SET updated_at = CURRENT_TIMESTAMP
+               WHERE id = NEW.id;
+           END""",
     ]
 }
 
@@ -96,6 +135,10 @@ def apply_migrations(conn, current_version: int, target_version: int):
                     if "duplicate column" not in str(e).lower():
                         raise
             
+            # Special handling for version 6: Create default project and migrate existing data
+            if version == 6:
+                _migrate_to_default_project(cursor)
+            
             # Update schema version
             cursor.execute(
                 "INSERT OR REPLACE INTO schema_version (version) VALUES (?)",
@@ -103,3 +146,58 @@ def apply_migrations(conn, current_version: int, target_version: int):
             )
             conn.commit()
             print(f"✓ Migration to version {version} complete")
+
+
+def _migrate_to_default_project(cursor):
+    """
+    Create a default project and assign all existing items, regions, and profiles to it.
+    This ensures backward compatibility when upgrading to multi-project support.
+    """
+    print("  Creating default project and migrating existing data...")
+    
+    # Check if default project already exists
+    cursor.execute("SELECT id FROM projects WHERE id = ?", (DEFAULT_PROJECT_ID,))
+    if cursor.fetchone():
+        print("  Default project already exists, skipping creation")
+        return
+    
+    # Create the default project
+    cursor.execute("""
+        INSERT INTO projects (id, name, description, color, icon, is_default, is_archived)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        DEFAULT_PROJECT_ID,
+        "Default Project",
+        "Default knowledge base containing all existing items",
+        "#8b5cf6",
+        "📚",
+        True,  # is_default
+        False  # is_archived
+    ))
+    
+    # Count items to migrate
+    cursor.execute("SELECT COUNT(*) FROM knowledge_items WHERE project_id IS NULL")
+    item_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM regions WHERE project_id IS NULL")
+    region_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM region_profiles WHERE project_id IS NULL")
+    profile_count = cursor.fetchone()[0]
+    
+    # Assign all existing items to the default project
+    cursor.execute("""
+        UPDATE knowledge_items SET project_id = ? WHERE project_id IS NULL
+    """, (DEFAULT_PROJECT_ID,))
+    
+    # Assign all existing regions to the default project
+    cursor.execute("""
+        UPDATE regions SET project_id = ? WHERE project_id IS NULL
+    """, (DEFAULT_PROJECT_ID,))
+    
+    # Assign all existing profiles to the default project
+    cursor.execute("""
+        UPDATE region_profiles SET project_id = ? WHERE project_id IS NULL
+    """, (DEFAULT_PROJECT_ID,))
+    
+    print(f"  ✓ Migrated {item_count} items, {region_count} regions, {profile_count} profiles to default project")
