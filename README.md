@@ -32,10 +32,6 @@
 - **✨ Semantic Rendering**: Labels, nodes, and links adapt based on zoom level
 - **📊 Zoom Indicator**: Real-time display of zoom level and current semantic view
 
-### Timeline & Views
-- **📊 Timeline View**: Chronological view of your knowledge items
-- **📌 Pinboard View**: Infinite canvas for spatial organization
-- **🎯 Project Pills**: Visual indicators showing which project items belong to
 
 ### AI Integration
 - **🤖 Goose Integration**: Use Brian directly from Goose AI assistant via MCP
