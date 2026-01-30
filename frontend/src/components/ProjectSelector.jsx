@@ -329,43 +329,80 @@ export function ProjectSelector() {
 
   return (
     <>
-      {/* Project Selector Button */}
+      {/* Project Selector Pill - Centered at top */}
       <div className="group relative" ref={buttonRef}>
-        <Button 
-          size="icon"
-          className={`h-12 w-12 rounded-full shadow-lg transition-colors border-2 border-accent-color ${
-            isOpen 
-              ? 'bg-black hover:bg-gray-800 text-white' 
-              : 'bg-card hover:bg-muted text-foreground'
-          }`}
+        <button
           onClick={() => setIsOpen(!isOpen)}
+          className={`
+            flex items-center gap-3 px-5 py-2.5 rounded-full shadow-lg transition-all duration-200
+            backdrop-blur-md border
+            ${isOpen 
+              ? 'bg-black/90 text-white border-white/20' 
+              : viewAllProjects
+                ? 'bg-indigo-600/90 text-white border-indigo-400/30 hover:bg-indigo-700/90'
+                : 'bg-card/90 text-foreground border-border hover:bg-muted/90'
+            }
+          `}
+          style={!viewAllProjects && currentProject?.color ? {
+            borderColor: `${currentProject.color}40`,
+          } : {}}
         >
+          {/* Project Color Dot / Gradient for All */}
           {viewAllProjects ? (
-            <Layers className="w-5 h-5" />
+            <div className="w-3 h-3 rounded-full bg-gradient-to-br from-indigo-400 via-purple-400 to-pink-400" />
           ) : (
-            renderProjectIcon(currentProject?.icon, 'w-5 h-5')
+            <div 
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: currentProject?.color || '#6366f1' }}
+            />
           )}
-        </Button>
+          
+          {/* Icon */}
+          {viewAllProjects ? (
+            <Layers className="w-4 h-4" />
+          ) : (
+            renderProjectIcon(currentProject?.icon, 'w-4 h-4')
+          )}
+          
+          {/* Project Name */}
+          <span className="font-medium text-sm">
+            {viewAllProjects ? 'All Projects' : (currentProject?.name || 'Select Project')}
+          </span>
+          
+          {/* Stats Badge */}
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            viewAllProjects 
+              ? 'bg-white/20 text-indigo-100' 
+              : 'bg-muted text-muted-foreground'
+          }`}>
+            {viewAllProjects 
+              ? `${projects.length} projects` 
+              : `${currentProject?.item_count || 0} items`
+            }
+          </span>
+          
+          {/* Chevron */}
+          <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${
+            isOpen ? 'rotate-90' : ''
+          } ${viewAllProjects ? 'text-indigo-200' : 'text-muted-foreground'}`} />
+        </button>
         
-        {/* Tooltip */}
-        <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-black text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap font-light z-50">
-          <div className="flex items-center gap-2">
-            <span>{viewAllProjects ? 'All Projects' : (currentProject?.name || 'Knowledge Bases')}</span>
-            <kbd className="px-1.5 py-0.5 text-xs bg-white/20 rounded">⌘P</kbd>
-          </div>
+        {/* Keyboard Shortcut Hint */}
+        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-2 py-1 bg-black text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+          <kbd className="px-1.5 py-0.5 bg-white/20 rounded">⌘P</kbd>
         </div>
       </div>
 
-      {/* Project Selector Panel */}
+      {/* Project Selector Dropdown Panel */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
             ref={panelRef}
-            initial={{ opacity: 0, x: -10, scale: 0.95 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: -10, scale: 0.95 }}
+            initial={{ opacity: 0, y: -10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="fixed left-20 top-6 z-50 w-80 bg-card border rounded-lg shadow-xl overflow-hidden"
+            className="fixed left-1/2 -translate-x-1/2 top-16 z-50 w-80 bg-card border rounded-lg shadow-xl overflow-hidden"
           >
             {/* Header */}
             <div className="p-3 border-b bg-muted/50">

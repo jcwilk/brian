@@ -1577,43 +1577,6 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
         </DialogContent>
       </Dialog>
       
-      {/* Universe Mode Toggle - Shows all projects */}
-      {projects && projects.length > 1 && (
-        <div className="absolute top-6 left-6 z-40">
-          <div className="group relative">
-            <Button
-              size="icon"
-              onClick={() => setUniverseMode(!universeMode)}
-              className={`h-12 w-12 rounded-full shadow-lg transition-colors ${
-                universeMode
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                  : 'bg-card hover:bg-muted text-foreground'
-              }`}
-            >
-              <Layers className="w-5 h-5" />
-            </Button>
-            <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-black text-white text-sm rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap font-light">
-              {universeMode ? 'Exit Universe Mode' : 'Knowledge Universe'}
-              <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-600 text-white rounded text-xs">
-                {projects.length} projects
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {/* Universe Mode Indicator */}
-      {universeMode && (
-        <div className="absolute top-6 left-20 z-40 bg-indigo-600/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg">
-          <div className="flex items-center gap-2 text-white text-sm font-medium">
-            <Layers className="w-4 h-4" />
-            <span>Knowledge Universe</span>
-            <span className="text-indigo-200">•</span>
-            <span className="text-indigo-200">{projects.length} projects</span>
-          </div>
-        </div>
-      )}
-      
       {/* Zoom Level Indicator - Shows current zoom and semantic level */}
       <div className="absolute bottom-6 left-6 z-40 bg-card/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-lg border border-border">
         <div className="flex items-center gap-3">
