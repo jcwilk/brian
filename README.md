@@ -175,7 +175,15 @@ BRIAN_DB_PATH=~/.brian/brian.db
 BRIAN_HOST=127.0.0.1
 BRIAN_PORT=8080
 BRIAN_DEBUG=false
+
+# Frontend (optional)
+VITE_PORT=5173           # Frontend dev server port (auto-fallback if busy)
+VITE_API_URL=http://127.0.0.1:8080  # Backend API URL for proxy
 ```
+
+**Dynamic Port Configuration:**
+- If `VITE_PORT` is busy, the frontend will automatically use the next available port
+- Useful when running multiple instances or when ports are occupied
 
 ### Goose Integration
 
@@ -529,6 +537,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - ✅ Project hulls and semantic zoom
 - ✅ All Projects view
 - ✅ Project pills in Timeline and Graph
+- ✅ Dynamic port configuration (VITE_PORT, VITE_API_URL env vars)
+- ✅ Automatic project assignment for new regions
+- ✅ Fixed Universe Mode initial load issues
+- ✅ Fixed region persistence across project views
 
 ### Coming Soon
 - 🔜 Zoom slider control
