@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Slider } from '@/components/ui/slider'
 import {
   Dialog,
   DialogContent,
@@ -12,10 +13,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Loader2, Tag, Info, Link as LinkIcon, FileText, Code2, FileCode, Map as MapIcon, Eye, EyeOff, Pencil, Trash2, Plus, Check, Settings2, Brain, Sparkles } from 'lucide-react'
+import { Loader2, Tag, Info, Link as LinkIcon, FileText, Code2, FileCode, Map as MapIcon, Eye, EyeOff, Pencil, Trash2, Plus, Check, Settings2, Brain, Sparkles, Home, Layers, ZoomIn, ZoomOut } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { RegionEditDialog } from './RegionEditDialog'
 import { ProjectPill } from './ProjectPill'
+
+// Distance multiplier for spreading projects apart
+const PROJECT_SPREAD = 2000
 
 // Predefined color palette for regions
 const REGION_COLORS = [
@@ -217,9 +221,132 @@ function updateRegionHulls(regionsLayer, regions, nodePositions, hoveredRegionId
 }
 
 /**
+ * Update project hulls on the SVG layer
+ * Similar to updateRegionHulls but for project-level groupings
+ */
+function updateProjectHulls(projectsLayer, projects, nodePositions, zoomScale, hoveredProjectId) {
+  if (!projectsLayer || !projects || projects.length === 0) return
+  
+  // Only show project hulls when zoomed out enough
+  const projectHullOpacity = zoomScale < 0.4 ? Math.min(1, (0.4 - zoomScale) * 5) : 0
+  
+  // Bind data to project groups
+  const projectGroups = projectsLayer.selectAll('.project-group')
+    .data(projects, d => d.id)
+  
+  // Remove old projects
+  projectGroups.exit().remove()
+  
+  // Add new project groups
+  const enterGroups = projectGroups.enter()
+    .append('g')
+    .attr('class', 'project-group')
+  
+  // Add path for hull shape
+  enterGroups.append('path')
+    .attr('class', 'project-hull')
+    .attr('fill-opacity', 0.08)
+    .attr('stroke-width', 3)
+    .attr('stroke-dasharray', '12,6')
+  
+  // Add label at centroid
+  enterGroups.append('text')
+    .attr('class', 'project-label')
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 24)
+    .attr('font-weight', 600)
+    .attr('fill-opacity', 0.9)
+    .attr('pointer-events', 'none')
+  
+  // Add item count badge
+  enterGroups.append('text')
+    .attr('class', 'project-count')
+    .attr('text-anchor', 'middle')
+    .attr('font-size', 14)
+    .attr('font-weight', 400)
+    .attr('fill-opacity', 0.6)
+    .attr('pointer-events', 'none')
+  
+  // Merge enter and update selections
+  const allGroups = enterGroups.merge(projectGroups)
+  
+  // Update each project
+  allGroups.each(function(project) {
+    const group = d3.select(this)
+    const isHovered = project.id === hoveredProjectId
+    
+    // Get positions of items in this project
+    const points = (project.itemIds || [])
+      .map(id => nodePositions.get(id))
+      .filter(p => p && p.x !== undefined && p.y !== undefined)
+    
+    if (points.length < 2) {
+      group.select('.project-hull').attr('d', '').attr('opacity', 0)
+      group.select('.project-label').attr('opacity', 0)
+      group.select('.project-count').attr('opacity', 0)
+      return
+    }
+    
+    // Compute convex hull with larger padding for projects
+    let hull, expandedHull
+    if (points.length === 2) {
+      const [p1, p2] = points
+      const dx = p2.x - p1.x
+      const dy = p2.y - p1.y
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1
+      const perpX = -dy / dist * 80
+      const perpY = dx / dist * 80
+      
+      hull = [
+        { x: p1.x + perpX, y: p1.y + perpY },
+        { x: p2.x + perpX, y: p2.y + perpY },
+        { x: p2.x - perpX, y: p2.y - perpY },
+        { x: p1.x - perpX, y: p1.y - perpY }
+      ]
+      expandedHull = hull
+    } else {
+      hull = computeConvexHull([...points])
+      expandedHull = expandHull(hull, 80) // Larger padding for projects
+    }
+    
+    // Calculate centroid for label
+    const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length
+    const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length
+    
+    // Update hull path
+    group.select('.project-hull')
+      .attr('d', hullPath(expandedHull))
+      .attr('fill', project.color || '#6366f1')
+      .attr('stroke', project.color || '#6366f1')
+      .attr('fill-opacity', isHovered ? 0.15 : 0.08)
+      .attr('stroke-opacity', (isHovered ? 1 : 0.5) * projectHullOpacity)
+      .attr('opacity', projectHullOpacity)
+    
+    // Update label - show project name when zoomed out
+    group.select('.project-label')
+      .attr('x', cx)
+      .attr('y', cy - 15)
+      .attr('fill', project.color || '#6366f1')
+      .attr('opacity', projectHullOpacity * (isHovered ? 1 : 0.8))
+      .text(project.name)
+    
+    // Update item count
+    group.select('.project-count')
+      .attr('x', cx)
+      .attr('y', cy + 15)
+      .attr('fill', project.color || '#6366f1')
+      .attr('opacity', projectHullOpacity * 0.6)
+      .text(`${points.length} items`)
+  })
+}
+
+/**
  * SimilarityGraph - Force-directed graph showing content similarity connections
  * Uses D3.js force simulation to visualize relationships between knowledge items
  * Supports theme-based highlighting via hover and knowledge regions
+ * 
+ * HIERARCHICAL ZOOM: Shows all projects in a "knowledge universe" where
+ * zooming out reveals project clusters as galaxies
  */
 export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const svgRef = useRef(null)
@@ -228,10 +355,21 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const [selectedNode, setSelectedNode] = useState(null)
   const [hoveredTheme, setHoveredTheme] = useState(null)
   const [hoveredRegion, setHoveredRegion] = useState(null)
+  const [hoveredProject, setHoveredProject] = useState(null)
   const [showThemeLegend, setShowThemeLegend] = useState(false)
   const [showInfoLegend, setShowInfoLegend] = useState(false)
   const [showRegionsPanel, setShowRegionsPanel] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  
+  // Hierarchical zoom state
+  const [zoomScale, setZoomScale] = useState(1)
+  const [allProjects, setAllProjects] = useState([])
+  const [allItems, setAllItems] = useState([])
+  const [allRegions, setAllRegions] = useState([])
+  const [universeMode, setUniverseMode] = useState(false) // Toggle for multi-project view
+  const zoomRef = useRef(null)
+  const svgSelectionRef = useRef(null)
+  const projectElementsRef = useRef(null)
   
   // Region and project state from store
   const { 
@@ -242,7 +380,8 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     toggleRegionVisibility,
     deleteRegion,
     regionsLoading,
-    currentProject
+    currentProject,
+    projects
   } = useStore()
   
   // Create Region dialog state
