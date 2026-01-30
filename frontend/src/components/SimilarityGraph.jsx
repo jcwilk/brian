@@ -550,7 +550,7 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
         // In universe mode, also fetch all items across all projects
         if (universeMode) {
           try {
-            const itemsResponse = await fetch('http://localhost:8080/api/v1/knowledge')
+            const itemsResponse = await fetch('http://localhost:8080/api/v1/items')
             const allItemsData = await itemsResponse.json()
             setAllItems(allItemsData)
           } catch (err) {
