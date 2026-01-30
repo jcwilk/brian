@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Slider } from '@/components/ui/slider'
+// TODO: Add Slider component for zoom control in Phase 6d
+// import { Slider } from '@/components/ui/slider'
 import {
   Dialog,
   DialogContent,
