@@ -887,6 +887,37 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     
     // Store reference for region updates
     regionElementsRef.current = regionsLayer
+    
+    // Create projects layer (behind regions layer) - only in universe mode
+    let projectsLayer = null
+    if (universeMode) {
+      projectsLayer = g.insert('g', ':first-child')
+        .attr('class', 'projects-layer')
+      projectElementsRef.current = projectsLayer
+    }
+    
+    // Track current zoom scale for semantic zoom
+    let currentZoomScale = 1
+    
+    // Update zoom behavior to track scale
+    zoom.on('zoom', (event) => {
+      g.attr('transform', event.transform)
+      currentZoomScale = event.transform.k
+      setZoomScale(currentZoomScale)
+      
+      // Update project hulls with new zoom scale (in universe mode)
+      if (universeMode && projectsLayer && nodePositionsRef.current.size > 0) {
+        // Build projects data with item IDs for hull calculation
+        const projectsWithItems = projects.map(p => ({
+          ...p,
+          itemIds: nodes.filter(n => n.project_id === p.id).map(n => n.id)
+        }))
+        updateProjectHulls(projectsLayer, projectsWithItems, nodePositionsRef.current, currentZoomScale, hoveredProject)
+      }
+    })
+    
+    // Re-apply zoom behavior with updated handler
+    svg.call(zoom)
 
     // Update positions on each tick
     simulation.on('tick', () => {
@@ -915,6 +946,16 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       
       // Update region hulls (use ref for hovered state to avoid re-renders)
       updateRegionHulls(regionsLayer, regions, nodePositionsRef.current, hoveredRegionRef.current)
+      
+      // Update project hulls in universe mode
+      if (universeMode && projectsLayer) {
+        // Build projects data with item IDs for hull calculation
+        const projectsWithItems = projects.map(p => ({
+          ...p,
+          itemIds: nodes.filter(n => n.project_id === p.id).map(n => n.id)
+        }))
+        updateProjectHulls(projectsLayer, projectsWithItems, nodePositionsRef.current, currentZoomScale, hoveredProject)
+      }
     })
 
     // Drag behavior
@@ -946,7 +987,7 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     return () => {
       simulation.stop()
     }
-  }, [items, connections, width, height, loading, isDarkMode, regions, universeMode, projectCentroids])
+  }, [items, connections, width, height, loading, isDarkMode, regions, universeMode, projectCentroids, projects, hoveredProject])
   
   // Separate effect for region hover updates (doesn't restart simulation)
   useEffect(() => {
