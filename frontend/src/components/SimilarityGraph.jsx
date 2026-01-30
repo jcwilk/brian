@@ -741,6 +741,37 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       fetchItems()
     }
   }, [universeMode, currentProject?.id, fetchItems])
+  
+  // Initialize data on mount - ensure we fetch in Universe Mode on first load
+  useEffect(() => {
+    const initializeGraph = async () => {
+      console.log('[SimilarityGraph] Initializing...', { universeMode, projectsCount: projects?.length })
+      
+      if (universeMode) {
+        // In universe mode, fetch all items directly on mount
+        try {
+          setLoading(true)
+          
+          // Fetch connections
+          const connectionsResponse = await fetch('http://localhost:8080/api/v1/similarity/connections?threshold=0.15&max_per_item=5')
+          const connectionsData = await connectionsResponse.json()
+          setConnections(connectionsData)
+          
+          // Fetch all items
+          const itemsResponse = await fetch('http://localhost:8080/api/v1/items')
+          const allItemsData = await itemsResponse.json()
+          console.log('[SimilarityGraph] Fetched all items:', allItemsData.length)
+          setAllItems(allItemsData)
+        } catch (err) {
+          console.error('[SimilarityGraph] Init failed:', err)
+        } finally {
+          setLoading(false)
+        }
+      }
+    }
+    
+    initializeGraph()
+  }, []) // Only run on mount
 
   useEffect(() => {
     // In universe mode, use allItems (all projects)
