@@ -8,7 +8,8 @@ from .connection import Database
 from ..models import (
     KnowledgeItem, Tag, Connection, ItemType, 
     Region, RegionType, 
-    RegionProfile, ContextStrategy, PROFILE_TEMPLATES
+    RegionProfile, ContextStrategy, PROFILE_TEMPLATES,
+    Project, DEFAULT_PROJECT_ID
 )
 
 
@@ -26,8 +27,8 @@ class KnowledgeRepository:
                 INSERT INTO knowledge_items 
                 (id, title, content, item_type, url, language, favorite, vote_count, 
                  created_at, updated_at, accessed_at, link_title, link_description, link_image, link_site_name,
-                 pinboard_x, pinboard_y)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 pinboard_x, pinboard_y, project_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             created_at_str = item.created_at.isoformat()
             self.db.execute(query, (
@@ -47,14 +48,15 @@ class KnowledgeRepository:
                 item.link_image,
                 item.link_site_name,
                 item.pinboard_x,
-                item.pinboard_y
+                item.pinboard_y,
+                item.project_id
             ))
         else:
             query = """
                 INSERT INTO knowledge_items 
                 (id, title, content, item_type, url, language, favorite, vote_count,
-                 link_title, link_description, link_image, link_site_name, pinboard_x, pinboard_y)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 link_title, link_description, link_image, link_site_name, pinboard_x, pinboard_y, project_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
             self.db.execute(query, (
                 item.id,
@@ -70,7 +72,8 @@ class KnowledgeRepository:
                 item.link_image,
                 item.link_site_name,
                 item.pinboard_x,
-                item.pinboard_y
+                item.pinboard_y,
+                item.project_id
             ))
         
         # Add tags if provided
@@ -98,7 +101,8 @@ class KnowledgeRepository:
                 limit: int = 100,
                 offset: int = 0,
                 sort_by: str = "created_at",
-                sort_order: str = "DESC") -> List[KnowledgeItem]:
+                sort_order: str = "DESC",
+                project_id: Optional[str] = None) -> List[KnowledgeItem]:
         """Get all knowledge items with optional filtering"""
         
         query = "SELECT * FROM knowledge_items WHERE 1=1"
@@ -110,6 +114,10 @@ class KnowledgeRepository:
         
         if favorite_only:
             query += " AND favorite = 1"
+        
+        if project_id:
+            query += " AND project_id = ?"
+            params.append(project_id)
         
         # Add sorting
         valid_sort_fields = ["created_at", "updated_at", "vote_count", "title"]
@@ -170,7 +178,7 @@ class KnowledgeRepository:
         cursor = self.db.execute(query, (item_id,))
         return cursor.rowcount > 0
     
-    def search(self, query_text: str, limit: int = 50) -> List[KnowledgeItem]:
+    def search(self, query_text: str, limit: int = 50, project_id: Optional[str] = None) -> List[KnowledgeItem]:
         """Full-text search across knowledge items"""
         import sqlite3
         
@@ -199,11 +207,19 @@ class KnowledgeRepository:
         item_ids = [row['item_id'] for row in fts_rows]
         placeholders = ','.join('?' * len(item_ids))
         
-        items_query = f"""
-            SELECT * FROM knowledge_items 
-            WHERE id IN ({placeholders})
-        """
-        rows = self.db.fetchall(items_query, tuple(item_ids))
+        # Build query with optional project_id filter
+        if project_id:
+            items_query = f"""
+                SELECT * FROM knowledge_items 
+                WHERE id IN ({placeholders}) AND project_id = ?
+            """
+            rows = self.db.fetchall(items_query, tuple(item_ids) + (project_id,))
+        else:
+            items_query = f"""
+                SELECT * FROM knowledge_items 
+                WHERE id IN ({placeholders})
+            """
+            rows = self.db.fetchall(items_query, tuple(item_ids))
         
         # Create a map of id to rank for sorting
         rank_map = {row['item_id']: idx for idx, row in enumerate(fts_rows)}
@@ -434,7 +450,8 @@ class RegionRepository:
         region_type: Optional[RegionType] = None,
         visible_only: bool = False,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        project_id: Optional[str] = None
     ) -> List[Region]:
         """Get all regions with optional filtering"""
         query = "SELECT * FROM regions WHERE 1=1"
@@ -446,6 +463,10 @@ class RegionRepository:
         
         if visible_only:
             query += " AND is_visible = 1"
+        
+        if project_id:
+            query += " AND project_id = ?"
+            params.append(project_id)
         
         query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
@@ -727,3 +748,191 @@ class RegionProfileRepository:
             regions.append(Region.from_db_row(dict(row), item_ids))
         
         return regions
+
+
+class ProjectRepository:
+    """Repository for project (knowledge base) operations"""
+    
+    def __init__(self, db: Database):
+        self.db = db
+    
+    def create(self, project: Project) -> Project:
+        """Create a new project"""
+        query = """
+            INSERT INTO projects
+            (id, name, description, color, icon, is_default, is_archived)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        self.db.execute(query, (
+            project.id,
+            project.name,
+            project.description,
+            project.color,
+            project.icon,
+            project.is_default,
+            project.is_archived
+        ))
+        return self.get_by_id(project.id)
+    
+    def get_by_id(self, project_id: str) -> Optional[Project]:
+        """Get project by ID with counts"""
+        query = "SELECT * FROM projects WHERE id = ?"
+        row = self.db.fetchone(query, (project_id,))
+        
+        if not row:
+            return None
+        
+        # Get counts
+        item_count = self._get_item_count(project_id)
+        region_count = self._get_region_count(project_id)
+        profile_count = self._get_profile_count(project_id)
+        
+        return Project.from_db_row(dict(row), item_count, region_count, profile_count)
+    
+    def get_all(
+        self,
+        include_archived: bool = False,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Project]:
+        """Get all projects with optional filtering"""
+        query = "SELECT * FROM projects WHERE 1=1"
+        params = []
+        
+        if not include_archived:
+            query += " AND is_archived = 0"
+        
+        query += " ORDER BY last_accessed_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        rows = self.db.fetchall(query, tuple(params))
+        
+        projects = []
+        for row in rows:
+            item_count = self._get_item_count(row['id'])
+            region_count = self._get_region_count(row['id'])
+            profile_count = self._get_profile_count(row['id'])
+            projects.append(Project.from_db_row(dict(row), item_count, region_count, profile_count))
+        
+        return projects
+    
+    def update(self, project: Project) -> Project:
+        """Update a project"""
+        query = """
+            UPDATE projects
+            SET name = ?, description = ?, color = ?, icon = ?, 
+                is_default = ?, is_archived = ?
+            WHERE id = ?
+        """
+        self.db.execute(query, (
+            project.name,
+            project.description,
+            project.color,
+            project.icon,
+            project.is_default,
+            project.is_archived,
+            project.id
+        ))
+        return self.get_by_id(project.id)
+    
+    def delete(self, project_id: str) -> bool:
+        """Delete a project (items, regions, profiles will have project_id set to NULL)"""
+        # Don't allow deleting the default project
+        project = self.get_by_id(project_id)
+        if project and project.is_default:
+            return False
+        
+        query = "DELETE FROM projects WHERE id = ?"
+        cursor = self.db.execute(query, (project_id,))
+        return cursor.rowcount > 0
+    
+    def get_default(self) -> Optional[Project]:
+        """Get the default project"""
+        query = "SELECT * FROM projects WHERE is_default = 1"
+        row = self.db.fetchone(query)
+        if not row:
+            return None
+        
+        item_count = self._get_item_count(row['id'])
+        region_count = self._get_region_count(row['id'])
+        profile_count = self._get_profile_count(row['id'])
+        return Project.from_db_row(dict(row), item_count, region_count, profile_count)
+    
+    def set_default(self, project_id: str) -> bool:
+        """Set a project as the default (unsets any existing default)"""
+        # First, unset any existing default
+        self.db.execute("UPDATE projects SET is_default = 0 WHERE is_default = 1")
+        # Set the new default
+        query = "UPDATE projects SET is_default = 1 WHERE id = ?"
+        cursor = self.db.execute(query, (project_id,))
+        return cursor.rowcount > 0
+    
+    def archive(self, project_id: str) -> bool:
+        """Archive a project"""
+        query = "UPDATE projects SET is_archived = 1 WHERE id = ?"
+        cursor = self.db.execute(query, (project_id,))
+        return cursor.rowcount > 0
+    
+    def unarchive(self, project_id: str) -> bool:
+        """Unarchive a project"""
+        query = "UPDATE projects SET is_archived = 0 WHERE id = ?"
+        cursor = self.db.execute(query, (project_id,))
+        return cursor.rowcount > 0
+    
+    def update_last_accessed(self, project_id: str) -> bool:
+        """Update the last_accessed_at timestamp"""
+        query = "UPDATE projects SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ?"
+        cursor = self.db.execute(query, (project_id,))
+        return cursor.rowcount > 0
+    
+    def _get_item_count(self, project_id: str) -> int:
+        """Get count of items in a project"""
+        query = "SELECT COUNT(*) as count FROM knowledge_items WHERE project_id = ?"
+        row = self.db.fetchone(query, (project_id,))
+        return row['count'] if row else 0
+    
+    def _get_region_count(self, project_id: str) -> int:
+        """Get count of regions in a project"""
+        query = "SELECT COUNT(*) as count FROM regions WHERE project_id = ?"
+        row = self.db.fetchone(query, (project_id,))
+        return row['count'] if row else 0
+    
+    def _get_profile_count(self, project_id: str) -> int:
+        """Get count of profiles in a project"""
+        query = "SELECT COUNT(*) as count FROM region_profiles WHERE project_id = ?"
+        row = self.db.fetchone(query, (project_id,))
+        return row['count'] if row else 0
+    
+    def get_stats(self, project_id: str) -> Dict:
+        """Get detailed statistics for a project"""
+        project = self.get_by_id(project_id)
+        if not project:
+            return {}
+        
+        # Get item counts by type
+        items_by_type_query = """
+            SELECT item_type, COUNT(*) as count 
+            FROM knowledge_items 
+            WHERE project_id = ?
+            GROUP BY item_type
+        """
+        type_rows = self.db.fetchall(items_by_type_query, (project_id,))
+        items_by_type = {row['item_type']: row['count'] for row in type_rows}
+        
+        # Get favorite count
+        favorites_query = """
+            SELECT COUNT(*) as count 
+            FROM knowledge_items 
+            WHERE project_id = ? AND favorite = 1
+        """
+        fav_row = self.db.fetchone(favorites_query, (project_id,))
+        favorites_count = fav_row['count'] if fav_row else 0
+        
+        return {
+            "project": project.to_dict(),
+            "items_by_type": items_by_type,
+            "favorites_count": favorites_count,
+            "total_items": project.item_count,
+            "total_regions": project.region_count,
+            "total_profiles": project.profile_count
+        }

@@ -9,6 +9,8 @@ from .knowledge_item import (
     RegionProfile,
     ContextStrategy,
     PROFILE_TEMPLATES,
+    Project,
+    DEFAULT_PROJECT_ID,
 )
 
 __all__ = [
@@ -21,4 +23,6 @@ __all__ = [
     'RegionProfile',
     'ContextStrategy',
     'PROFILE_TEMPLATES',
+    'Project',
+    'DEFAULT_PROJECT_ID',
 ]

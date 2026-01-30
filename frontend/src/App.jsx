@@ -9,6 +9,8 @@ import { NewItemDialog } from '@/components/NewItemDialog'
 import { EditItemDialog } from '@/components/EditItemDialog'
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog'
 import { BrainLogo } from '@/components/BrainLogo'
+import { ProjectSelector } from '@/components/ProjectSelector'
+import { ProjectPill } from '@/components/ProjectPill'
 import { SimilarityGraph } from '@/components/SimilarityGraph'
 import { InfinitePinboard } from '@/components/InfinitePinboard'
 import { Timeline } from '@/components/Timeline'
@@ -175,6 +177,9 @@ function App() {
             <BrainLogo className="w-6 h-6 text-white" />
           </Button>
         </div>
+
+        {/* Project Selector Button */}
+        <ProjectSelector />
 
         {/* Feed Button */}
         <div className="group relative">
@@ -494,6 +499,10 @@ function App() {
                             >
                               <Star className={`w-3 h-3 ${item.is_favorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
                             </Button>
+                            {/* Project Pill */}
+                            {item.project_id && (
+                              <ProjectPill projectId={item.project_id} size="sm" />
+                            )}
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="text-xs text-muted-foreground">
@@ -558,6 +567,10 @@ function App() {
                               >
                                 <Star className={`w-3 h-3 ${item.is_favorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
                               </Button>
+                              {/* Project Pill */}
+                              {item.project_id && (
+                                <ProjectPill projectId={item.project_id} size="sm" />
+                              )}
                             </div>
                             <div className="flex items-center gap-1">
                               <Button

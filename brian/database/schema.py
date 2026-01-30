@@ -2,7 +2,7 @@
 Database schema for brian - inspired by Goose's SQLite architecture
 """
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6  # Added projects table and project_id foreign keys
 
 # Schema creation SQL statements
 SCHEMA_SQL = """
@@ -10,6 +10,20 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Projects table - top-level knowledge base containers
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,  -- UUID
+    name TEXT NOT NULL,
+    description TEXT,
+    color TEXT DEFAULT '#8b5cf6',  -- Hex color for project indicator
+    icon TEXT,  -- Emoji icon for project
+    is_default BOOLEAN DEFAULT FALSE,  -- Mark as default project
+    is_archived BOOLEAN DEFAULT FALSE,  -- Soft archive
+    last_accessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Main knowledge items table
@@ -30,7 +44,9 @@ CREATE TABLE IF NOT EXISTS knowledge_items (
     link_image TEXT,  -- Rich preview: image URL from og:image
     link_site_name TEXT,  -- Rich preview: site name from og:site_name
     pinboard_x REAL,  -- X position on pinboard canvas
-    pinboard_y REAL  -- Y position on pinboard canvas
+    pinboard_y REAL,  -- Y position on pinboard canvas
+    project_id TEXT,  -- Associated project (knowledge base)
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
 -- Tags table
@@ -91,8 +107,10 @@ CREATE TABLE IF NOT EXISTS region_profiles (
     tools_config TEXT,  -- JSON: enabled/disabled tools, tool-specific settings
     recipe_path TEXT,  -- Path to associated recipe file
     is_default BOOLEAN DEFAULT FALSE,  -- Mark as default profile
+    project_id TEXT,  -- Associated project (knowledge base)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
 -- Knowledge regions for spatial grouping of nodes in graph view
@@ -105,9 +123,11 @@ CREATE TABLE IF NOT EXISTS regions (
     bounds_json TEXT,  -- JSON: polygon points, bounding box, or other geometry
     is_visible BOOLEAN DEFAULT TRUE,  -- Toggle visibility in graph
     profile_id TEXT,  -- Associated region profile
+    project_id TEXT,  -- Associated project (knowledge base)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (profile_id) REFERENCES region_profiles(id) ON DELETE SET NULL
+    FOREIGN KEY (profile_id) REFERENCES region_profiles(id) ON DELETE SET NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
 -- Junction table for region-item membership (many-to-many)
@@ -136,16 +156,22 @@ CREATE INDEX IF NOT EXISTS idx_items_created ON knowledge_items(created_at DESC)
 CREATE INDEX IF NOT EXISTS idx_items_updated ON knowledge_items(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_items_favorite ON knowledge_items(favorite);
 CREATE INDEX IF NOT EXISTS idx_items_votes ON knowledge_items(vote_count DESC);
+CREATE INDEX IF NOT EXISTS idx_items_project ON knowledge_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(name);
 CREATE INDEX IF NOT EXISTS idx_connections_source ON connections(source_item_id);
 CREATE INDEX IF NOT EXISTS idx_connections_target ON connections(target_item_id);
 CREATE INDEX IF NOT EXISTS idx_regions_type ON regions(region_type);
 CREATE INDEX IF NOT EXISTS idx_regions_visible ON regions(is_visible);
 CREATE INDEX IF NOT EXISTS idx_regions_profile ON regions(profile_id);
+CREATE INDEX IF NOT EXISTS idx_regions_project ON regions(project_id);
 CREATE INDEX IF NOT EXISTS idx_region_items_region ON region_items(region_id);
 CREATE INDEX IF NOT EXISTS idx_region_items_item ON region_items(item_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_default ON region_profiles(is_default);
 CREATE INDEX IF NOT EXISTS idx_profiles_name ON region_profiles(name);
+CREATE INDEX IF NOT EXISTS idx_profiles_project ON region_profiles(project_id);
+CREATE INDEX IF NOT EXISTS idx_projects_default ON projects(is_default);
+CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(is_archived);
+CREATE INDEX IF NOT EXISTS idx_projects_accessed ON projects(last_accessed_at DESC);
 
 -- Triggers for updated_at timestamp
 CREATE TRIGGER IF NOT EXISTS update_knowledge_items_timestamp 
@@ -183,6 +209,14 @@ CREATE TRIGGER IF NOT EXISTS update_region_profiles_timestamp
 AFTER UPDATE ON region_profiles
 BEGIN
     UPDATE region_profiles SET updated_at = CURRENT_TIMESTAMP
+    WHERE id = NEW.id;
+END;
+
+-- Trigger for projects updated_at timestamp
+CREATE TRIGGER IF NOT EXISTS update_projects_timestamp 
+AFTER UPDATE ON projects
+BEGIN
+    UPDATE projects SET updated_at = CURRENT_TIMESTAMP
     WHERE id = NEW.id;
 END;
 """

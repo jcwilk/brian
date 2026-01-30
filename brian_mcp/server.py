@@ -17,10 +17,10 @@ from typing import Any, Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from brian.database.connection import Database
-from brian.database.repository import KnowledgeRepository, RegionRepository, RegionProfileRepository
+from brian.database.repository import KnowledgeRepository, RegionRepository, RegionProfileRepository, ProjectRepository
 from brian.services.similarity import SimilarityService
 from brian.services.link_preview import fetch_link_metadata, is_google_doc
-from brian.models.knowledge_item import KnowledgeItem, ItemType, Region, RegionType, RegionProfile, ContextStrategy, PROFILE_TEMPLATES
+from brian.models.knowledge_item import KnowledgeItem, ItemType, Region, RegionType, RegionProfile, ContextStrategy, PROFILE_TEMPLATES, Project, DEFAULT_PROJECT_ID
 
 from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
@@ -45,12 +45,13 @@ server = Server("brian-knowledge")
 repo: Optional[KnowledgeRepository] = None
 region_repo: Optional[RegionRepository] = None
 profile_repo: Optional[RegionProfileRepository] = None
+project_repo: Optional[ProjectRepository] = None
 similarity_service: Optional[SimilarityService] = None
 
 
 def init_services():
     """Initialize database connection and services"""
-    global repo, region_repo, profile_repo, similarity_service
+    global repo, region_repo, profile_repo, project_repo, similarity_service
     db_path = os.path.expanduser("~/.brian/brian.db")
     db = Database(db_path)
     # Don't call initialize() - it breaks FTS queries in autocommit mode
@@ -58,6 +59,7 @@ def init_services():
     repo = KnowledgeRepository(db)
     region_repo = RegionRepository(db)
     profile_repo = RegionProfileRepository(db)
+    project_repo = ProjectRepository(db)
     similarity_service = SimilarityService()
 
 
@@ -223,7 +225,7 @@ async def handle_list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_knowledge",
-            description="Search the knowledge base for items matching a query. Supports full-text search across titles and content.",
+            description="Search the knowledge base for items matching a query. Supports full-text search across titles and content. Can be scoped to a specific project.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -235,6 +237,10 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "string",
                         "enum": ["note", "link", "code", "paper"],
                         "description": "Optional filter by item type"
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Optional project ID to scope search (uses all projects if not specified)"
                     },
                     "limit": {
                         "type": "integer",
@@ -292,6 +298,10 @@ For simple web links without document content:
                     "language": {
                         "type": "string",
                         "description": "Programming language (for code type)"
+                    },
+                    "project_id": {
+                        "type": "string",
+                        "description": "Optional project ID to add item to (uses default project if not specified)"
                     }
                 },
                 "required": ["title", "content", "item_type"]
@@ -612,6 +622,105 @@ For simple web links without document content:
                 "required": ["query"]
             }
         ),
+        # Project (Knowledge Base) tools
+        Tool(
+            name="list_projects",
+            description="List all knowledge base projects. Projects are isolated knowledge bases that can contain their own items, regions, and profiles.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "include_archived": {
+                        "type": "boolean",
+                        "description": "Include archived projects (default: false)",
+                        "default": False
+                    }
+                }
+            }
+        ),
+        Tool(
+            name="get_project",
+            description="Get details of a specific project including statistics.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of the project to retrieve"
+                    }
+                },
+                "required": ["project_id"]
+            }
+        ),
+        Tool(
+            name="get_current_project",
+            description="Get the current default project. This is the project that new items will be added to by default.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="create_project",
+            description="Create a new knowledge base project.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the project"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of the project"
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Hex color code for the project (e.g., '#3b82f6')"
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "Emoji icon for the project (e.g., '🪿')"
+                    }
+                },
+                "required": ["name"]
+            }
+        ),
+        Tool(
+            name="switch_project",
+            description="Switch the default project. New items will be added to this project by default.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of the project to switch to"
+                    }
+                },
+                "required": ["project_id"]
+            }
+        ),
+        Tool(
+            name="get_project_context",
+            description="Get knowledge context from a specific project. Returns items, regions, and statistics for the project.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "ID of the project (uses default project if not specified)"
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional query to filter/rank items within the project"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of items to return (default: 20)",
+                        "default": 20
+                    }
+                }
+            }
+        ),
     ]
 
 
@@ -622,16 +731,17 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "search_knowledge":
         query = arguments["query"]
         item_type = arguments.get("item_type")
+        project_id = arguments.get("project_id")
         limit = arguments.get("limit", 10)
         
-        # First, do full-text search
-        text_results = repo.search(query)
+        # First, do full-text search (with optional project scoping)
+        text_results = repo.search(query, project_id=project_id)
         
         if item_type:
             text_results = [r for r in text_results if r.item_type == item_type]
         
         # If we have text results, enhance with similarity-based related items
-        all_items = repo.get_all()
+        all_items = repo.get_all(project_id=project_id)
         
         # Convert items to dict format for similarity service
         items_dict = [{
@@ -712,6 +822,13 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         tags = arguments.get("tags", [])
         url = arguments.get("url")
         language = arguments.get("language")
+        project_id = arguments.get("project_id")
+        
+        # If no project_id specified, use the default project
+        if not project_id:
+            default_project = project_repo.get_default()
+            if default_project:
+                project_id = default_project.id
         
         # Check if this is a Google Docs URL and we should fetch content
         google_doc_content = None
@@ -754,6 +871,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             tags=tags,
             url=url,
             language=language,
+            project_id=project_id,
             **link_metadata
         )
         
@@ -1575,6 +1693,194 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             "query": query,
             "content_type": content_type,
             "suggestions": scored_profiles[:3]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    # Project (Knowledge Base) tool handlers
+    elif name == "list_projects":
+        include_archived = arguments.get("include_archived", False)
+        
+        projects = project_repo.get_all(include_archived=include_archived)
+        
+        response = {
+            "count": len(projects),
+            "projects": [p.to_dict() for p in projects]
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "get_project":
+        project_id = arguments["project_id"]
+        project = project_repo.get_by_id(project_id)
+        
+        if not project:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Project {project_id} not found"})
+            )]
+        
+        # Get stats for the project
+        stats = project_repo.get_stats(project_id)
+        
+        response = {
+            "project": project.to_dict(),
+            "stats": stats
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "get_current_project":
+        project = project_repo.get_default()
+        
+        if not project:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": "No default project found"})
+            )]
+        
+        response = {
+            "project": project.to_dict(),
+            "message": "This is the current default project. New items will be added here."
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "create_project":
+        name = arguments["name"]
+        description = arguments.get("description", "")
+        color = arguments.get("color", "#6366f1")  # Default indigo
+        icon = arguments.get("icon", "📁")
+        
+        project = Project(
+            name=name,
+            description=description,
+            color=color,
+            icon=icon
+        )
+        
+        created_project = project_repo.create(project)
+        
+        response = {
+            "success": True,
+            "project": created_project.to_dict()
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "switch_project":
+        project_id = arguments["project_id"]
+        
+        project = project_repo.get_by_id(project_id)
+        if not project:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Project {project_id} not found"})
+            )]
+        
+        # Set as default
+        project_repo.set_default(project_id)
+        
+        # Update last accessed
+        project_repo.update_last_accessed(project_id)
+        
+        response = {
+            "success": True,
+            "project": project.to_dict(),
+            "message": f"Switched to project '{project.name}'. New items will be added here."
+        }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "get_project_context":
+        project_id = arguments.get("project_id")
+        query = arguments.get("query")
+        limit = arguments.get("limit", 20)
+        
+        # Use default project if not specified
+        if not project_id:
+            default_project = project_repo.get_default()
+            if default_project:
+                project_id = default_project.id
+            else:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"error": "No project specified and no default project found"})
+                )]
+        
+        project = project_repo.get_by_id(project_id)
+        if not project:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Project {project_id} not found"})
+            )]
+        
+        # Get items for this project
+        items = repo.get_all(project_id=project_id, limit=limit)
+        
+        # If query provided, rank items by relevance
+        if query and items:
+            items_dict = [{
+                'id': item.id,
+                'title': item.title,
+                'content': item.content,
+                'tags': item.tags or []
+            } for item in items]
+            
+            similarity_service.build_index(items_dict)
+            query_dict = {'id': 'query', 'title': query, 'content': query, 'tags': []}
+            
+            scored_items = []
+            for item, item_dict in zip(items, items_dict):
+                score = similarity_service.get_similarity_score(query_dict, item_dict)
+                scored_items.append((item, score))
+            
+            scored_items.sort(key=lambda x: x[1], reverse=True)
+            items = [item for item, score in scored_items[:limit]]
+        
+        # Get regions for this project
+        regions = region_repo.get_all(project_id=project_id)
+        
+        # Get stats
+        stats = project_repo.get_stats(project_id)
+        
+        response = {
+            "project": project.to_dict(),
+            "stats": stats,
+            "regions": [{
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "color": r.color,
+                "item_count": len(r.item_ids) if r.item_ids else 0
+            } for r in regions],
+            "item_count": len(items),
+            "items": [{
+                "id": item.id,
+                "title": item.title,
+                "content": item.content[:300] + "..." if len(item.content) > 300 else item.content,
+                "type": str(item.item_type.value) if hasattr(item.item_type, 'value') else str(item.item_type),
+                "tags": item.tags,
+                "url": item.url
+            } for item in items]
         }
         
         return [TextContent(
