@@ -1577,8 +1577,8 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
         </DialogContent>
       </Dialog>
       
-      {/* Zoom Level Indicator - Shows current zoom and semantic level */}
-      <div className="absolute bottom-6 left-6 z-40 bg-card/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-lg border border-border">
+      {/* Zoom Level Indicator - Centered at bottom */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-lg border border-border">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <ZoomIn className="w-4 h-4 text-muted-foreground" />
