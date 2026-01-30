@@ -404,6 +404,10 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const nodePositionsRef = useRef(new Map())
   const regionElementsRef = useRef(null)
   const hoveredRegionRef = useRef(null)
+  
+  // Refs for semantic zoom element updates
+  const labelElementsRef = useRef(null)
+  const linkLabelElementsRef = useRef(null)
 
   // Detect dark mode
   useEffect(() => {
@@ -749,7 +753,7 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     const g = svg.append('g')
     
     const zoom = d3.zoom()
-      .scaleExtent([0.1, 4])
+      .scaleExtent([0.05, 4]) // Extended range for universe view (0.05 = very zoomed out)
       .on('zoom', (event) => {
         g.attr('transform', event.transform)
       })
@@ -809,6 +813,9 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       .attr('fill', mutedTextColor)
       .attr('text-anchor', 'middle')
       .text(d => `${(d.similarity * 100).toFixed(0)}%`)
+    
+    // Store link label reference for semantic zoom
+    linkLabelElementsRef.current = linkLabel
 
     // Add nodes
     const node = g.append('g')
@@ -838,6 +845,9 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       .attr('dy', 4)
       .text(d => d.title.length > 30 ? d.title.substring(0, 30) + '...' : d.title)
       .style('pointer-events', 'none')
+    
+    // Store label reference for semantic zoom
+    labelElementsRef.current = label
 
     // Add hover effects for nodes
     node
@@ -899,11 +909,69 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     // Track current zoom scale for semantic zoom
     let currentZoomScale = 1
     
+    /**
+     * Handle semantic zoom - adjust visual elements based on zoom level
+     * This creates a smooth transition between detail levels:
+     * - Zoomed in (scale > 1): Full detail, all labels visible
+     * - Medium (0.5 - 1): Labels start fading
+     * - Zoomed out (0.3 - 0.5): Labels hidden, nodes shrink
+     * - Far out (< 0.3): Only project hulls visible, nodes are dots
+     */
+    function handleSemanticZoom(scale) {
+      // Calculate opacity values based on zoom scale with smooth transitions
+      // Item labels: fade out between 0.5 and 0.3
+      const labelOpacity = scale > 0.5 ? 1 : scale < 0.3 ? 0 : (scale - 0.3) / 0.2
+      
+      // Link labels: fade out between 0.6 and 0.4
+      const linkLabelOpacity = scale > 0.6 ? 1 : scale < 0.4 ? 0 : (scale - 0.4) / 0.2
+      
+      // Node size: shrink when zoomed out (scale < 0.5)
+      // At scale 1.0: radius 8, at scale 0.2: radius 4
+      const nodeRadius = scale > 0.5 ? 8 : Math.max(3, 8 * (scale / 0.5))
+      
+      // Apply to item labels with smooth transition
+      if (label) {
+        label
+          .transition()
+          .duration(150)
+          .attr('opacity', labelOpacity)
+          .attr('font-size', scale > 0.5 ? 11 : Math.max(8, 11 * (scale / 0.5)))
+      }
+      
+      // Apply to link labels
+      if (linkLabel) {
+        linkLabel
+          .transition()
+          .duration(150)
+          .attr('opacity', linkLabelOpacity)
+      }
+      
+      // Apply to nodes (shrink when zoomed out)
+      if (node) {
+        node
+          .transition()
+          .duration(150)
+          .attr('r', nodeRadius)
+      }
+      
+      // Adjust link opacity when very zoomed out
+      const linkOpacity = scale > 0.3 ? 1 : Math.max(0.3, scale / 0.3)
+      if (link) {
+        link
+          .transition()
+          .duration(150)
+          .attr('stroke-opacity', d => (0.3 + d.similarity * 0.5) * linkOpacity)
+      }
+    }
+    
     // Update zoom behavior to track scale
     zoom.on('zoom', (event) => {
       g.attr('transform', event.transform)
       currentZoomScale = event.transform.k
       setZoomScale(currentZoomScale)
+      
+      // Apply semantic zoom effects
+      handleSemanticZoom(currentZoomScale)
       
       // Update project hulls with new zoom scale (in universe mode)
       if (universeMode && projectsLayer && nodePositionsRef.current.size > 0) {
@@ -1500,6 +1568,20 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
           </div>
         </div>
       )}
+      
+      {/* Zoom Level Indicator - Shows current zoom and semantic level */}
+      <div className="absolute bottom-6 left-6 z-40 bg-card/90 backdrop-blur-md px-3 py-2 rounded-lg shadow-lg border border-border">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <ZoomIn className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium tabular-nums">{(zoomScale * 100).toFixed(0)}%</span>
+          </div>
+          <div className="h-4 w-px bg-border" />
+          <span className="text-xs text-muted-foreground">
+            {zoomScale > 0.5 ? 'Items' : zoomScale > 0.3 ? 'Regions' : 'Projects'}
+          </span>
+        </div>
+      </div>
 
       {/* Info/Legend Button - Circular like nav items */}
       <div className="absolute bottom-6 right-6 z-40">
