@@ -454,9 +454,15 @@ async def compute_similarity_score(
 @router.post("/regions", response_model=dict, status_code=201)
 async def create_region(region_data: dict):
     """Create a new knowledge region"""
-    _, _, _, region_repo, _, _ = get_repositories()
+    _, _, _, region_repo, _, project_repo = get_repositories()
     
     try:
+        # Get project_id - use provided, or default project
+        project_id = region_data.get("project_id")
+        if not project_id:
+            default_project = project_repo.get_default()
+            project_id = default_project.id if default_project else None
+        
         region = Region(
             name=region_data["name"],
             description=region_data.get("description"),
@@ -464,7 +470,8 @@ async def create_region(region_data: dict):
             region_type=RegionType(region_data.get("region_type", "manual")),
             bounds_json=region_data.get("bounds_json"),
             is_visible=region_data.get("is_visible", True),
-            item_ids=region_data.get("item_ids", [])
+            item_ids=region_data.get("item_ids", []),
+            project_id=project_id
         )
         
         created = region_repo.create(region)

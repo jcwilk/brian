@@ -226,7 +226,17 @@ export const useStore = create((set, get) => ({
   createRegion: async (data) => {
     set({ regionsLoading: true })
     try {
-      const region = await api.createRegion(data)
+      // Include current project ID if not in "All Projects" mode
+      const currentProject = get().currentProject
+      const viewAllProjects = get().viewAllProjects
+      const regionData = { ...data }
+      
+      // If not viewing all projects and we have a current project, associate region with it
+      if (!viewAllProjects && currentProject?.id && !regionData.project_id) {
+        regionData.project_id = currentProject.id
+      }
+      
+      const region = await api.createRegion(regionData)
       await get().fetchRegions()
       set({ regionsLoading: false })
       return region
