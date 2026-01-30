@@ -379,7 +379,6 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
   const [allProjects, setAllProjects] = useState([])
   const [allItems, setAllItems] = useState([])
   const [allRegions, setAllRegions] = useState([])
-  const [universeMode, setUniverseMode] = useState(false) // Toggle for multi-project view
   const zoomRef = useRef(null)
   const svgSelectionRef = useRef(null)
   const projectElementsRef = useRef(null)
@@ -394,8 +393,15 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     deleteRegion,
     regionsLoading,
     currentProject,
-    projects
+    projects,
+    viewAllProjects,
+    setViewAllProjects
   } = useStore()
+  
+  // Universe mode is synced with viewAllProjects from store
+  // This ensures ProjectSelector "All Projects" and graph Universe Mode are in sync
+  const universeMode = viewAllProjects
+  const setUniverseMode = (value) => setViewAllProjects(value)
   
   // Create Region dialog state
   const [showCreateRegionDialog, setShowCreateRegionDialog] = useState(false)
