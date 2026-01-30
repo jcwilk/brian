@@ -395,13 +395,20 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     currentProject,
     projects,
     viewAllProjects,
-    setViewAllProjects
+    setViewAllProjects,
+    items: storeItems,
+    fetchItems
   } = useStore()
   
   // Universe mode is synced with viewAllProjects from store
   // This ensures ProjectSelector "All Projects" and graph Universe Mode are in sync
   const universeMode = viewAllProjects
   const setUniverseMode = (value) => setViewAllProjects(value)
+  
+  // Use store items (project-filtered) when not in universe mode
+  // The items prop from App.jsx is NOT filtered by project, so we ignore it
+  // and use the store's items which respect the currentProject filter
+  const projectFilteredItems = storeItems
   
   // Create Region dialog state
   const [showCreateRegionDialog, setShowCreateRegionDialog] = useState(false)
@@ -726,9 +733,17 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     }
   }, [selectedNode])
 
+  // Fetch store items when component mounts or project changes
   useEffect(() => {
-    // In universe mode, use allItems; otherwise use items prop
-    const displayItems = universeMode && allItems.length > 0 ? allItems : items
+    if (!universeMode) {
+      fetchItems()
+    }
+  }, [universeMode, currentProject?.id, fetchItems])
+
+  useEffect(() => {
+    // In universe mode, use allItems (all projects)
+    // Otherwise use projectFilteredItems from store (filtered by current project)
+    const displayItems = universeMode && allItems.length > 0 ? allItems : projectFilteredItems
     
     if (!displayItems || displayItems.length === 0 || !svgRef.current || loading) return
     if (connections.length === 0) return
@@ -736,9 +751,10 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
     console.log('[SimilarityGraph] Rendering:', { 
       universeMode, 
       displayItemsCount: displayItems.length, 
-      itemsCount: items?.length,
+      projectFilteredCount: projectFilteredItems?.length,
       allItemsCount: allItems.length,
-      projectsCount: projects?.length
+      projectsCount: projects?.length,
+      currentProjectId: currentProject?.id
     })
 
     // Clear previous content
