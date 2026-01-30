@@ -565,7 +565,9 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
       }
     }
 
-    if (items && items.length > 0) {
+    // In universe mode, always fetch (we'll get all items from the API)
+    // In normal mode, wait for items prop to be populated
+    if (universeMode || (items && items.length > 0)) {
       fetchConnections()
     }
   }, [items, currentProject?.id, universeMode])
