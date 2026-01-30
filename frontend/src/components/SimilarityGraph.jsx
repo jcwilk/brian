@@ -15,6 +15,7 @@ import {
 import { Loader2, Tag, Info, Link as LinkIcon, FileText, Code2, FileCode, Map as MapIcon, Eye, EyeOff, Pencil, Trash2, Plus, Check, Settings2, Brain, Sparkles } from 'lucide-react'
 import { useStore } from '@/store/useStore'
 import { RegionEditDialog } from './RegionEditDialog'
+import { ProjectPill } from './ProjectPill'
 
 // Predefined color palette for regions
 const REGION_COLORS = [
@@ -1333,6 +1334,9 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
                   {selectedNode.item_type === 'code' && <Code2 className="w-5 h-5" />}
                   {selectedNode.item_type === 'paper' && <FileCode className="w-5 h-5" />}
                   <span className="text-sm text-muted-foreground capitalize font-medium">{selectedNode.item_type}</span>
+                  {selectedNode.project_id && (
+                    <ProjectPill projectId={selectedNode.project_id} size="sm" />
+                  )}
                 </div>
                 <button
                   onClick={() => setSelectedNode(null)}

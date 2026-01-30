@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { truncateTitle, truncateText } from '@/lib/utils'
 import LinkPreview from './LinkPreview'
+import { ProjectPill } from './ProjectPill'
 
 export function Timeline({ 
   items = [], 
@@ -214,6 +215,9 @@ export function Timeline({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {getTypeIcon(item.item_type)}
+                          {item.project_id && (
+                            <ProjectPill projectId={item.project_id} size="sm" />
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -291,6 +295,9 @@ export function Timeline({
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div className="flex items-center gap-2">
                             {getTypeIcon(item.item_type)}
+                            {item.project_id && (
+                              <ProjectPill projectId={item.project_id} size="sm" />
+                            )}
                             <Button
                               variant="ghost"
                               size="icon"
