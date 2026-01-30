@@ -34,7 +34,7 @@ export const useStore = create((set, get) => ({
   projects: [],
   currentProject: null,
   projectsLoading: false,
-  viewAllProjects: false,  // When true, show items from all projects
+  viewAllProjects: true,  // Default to showing all projects (Universe Mode)
   
   // UI state
   currentView: 'feed',
