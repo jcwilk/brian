@@ -1,19 +1,46 @@
 # 🧠 Brian - Your Personal Knowledge Base
 
 > A play on "brain" - Brian is your intelligent knowledge repository with vector-based similarity search, beautiful graph visualization, and seamless Goose integration. Because I cannot spell 9/10 times and I make this mistake all the time now you can too!
-<img width="2036" height="1193" alt="Screenshot 2026-01-20 at 3 10 36 PM" src="https://github.com/user-attachments/assets/4699bcea-8e51-4950-be92-200290c9a9f7" />
 
+<img width="2036" height="1193" alt="Screenshot 2026-01-20 at 3 10 36 PM" src="https://github.com/user-attachments/assets/4699bcea-8e51-4950-be92-200290c9a9f7" />
 
 ## ✨ Features
 
-- **📚 Knowledge Management**: Store links, notes, code snippets, and papers
+### Core Knowledge Management
+- **📚 Knowledge Items**: Store links, notes, code snippets, and papers
 - **🔍 Smart Search**: Full-text search with FTS5 + TF-IDF vector similarity
-- **🕸️ Graph Visualization**: Interactive D3.js force-directed graph showing connections
-- **🎨 Theme Highlighting**: Hover over tags to see themed connections with colored drop shadows
-- **🤖 Goose Integration**: Use Brian directly from Goose AI assistant via MCP
-- **📊 Timeline View**: Chronological view of your knowledge items
+- **🏷️ Tagging System**: Organize items with tags for easy filtering
 - **🔗 Link Previews**: Automatic metadata extraction from URLs
 - **📄 Google Docs Support**: Seamless integration with Google Drive documents
+
+### Multi-Project Knowledge Bases
+- **🗂️ Multiple Projects**: Organize knowledge into separate project spaces
+- **🎨 Custom Project Icons**: Choose from 25+ Lucide icons for each project
+- **🌈 Project Colors**: Color-code your knowledge bases
+- **🌐 All Projects View**: See everything across all knowledge bases at once
+
+### Graph Visualization
+- **🕸️ Force-Directed Graph**: Interactive D3.js visualization showing connections
+- **🎨 Theme Highlighting**: Hover over tags to see themed connections with colored drop shadows
+- **🔍 Semantic Zoom**: Smooth transitions between project, region, and item views
+- **🌌 Knowledge Universe**: Zoom out to see all projects as "galaxies" in a unified space
+- **📍 Knowledge Regions**: Group related items with visual boundaries
+
+### Hierarchical Zoom (Knowledge Universe)
+- **🔭 Multi-Scale View**: Seamlessly zoom from individual items to entire knowledge universe
+- **🪐 Project Hulls**: Visual boundaries around project clusters when zoomed out
+- **✨ Semantic Rendering**: Labels, nodes, and links adapt based on zoom level
+- **📊 Zoom Indicator**: Real-time display of zoom level and current semantic view
+
+### Timeline & Views
+- **📊 Timeline View**: Chronological view of your knowledge items
+- **📌 Pinboard View**: Infinite canvas for spatial organization
+- **🎯 Project Pills**: Visual indicators showing which project items belong to
+
+### AI Integration
+- **🤖 Goose Integration**: Use Brian directly from Goose AI assistant via MCP
+- **🧭 Region Profiles**: Configure AI behavior per knowledge region
+- **💡 Smart Context**: Get relevant knowledge context for any topic
 
 ## 🚀 Quick Start
 
@@ -75,17 +102,21 @@ You: Add this link to Brian: https://example.com with tags "ai, research"
 Goose: ✓ Added to your knowledge base!
 ```
 
-### Searching
+### Managing Projects
 
-**Via Web UI:**
-- Use the search bar at the top
-- Results show both exact matches and similar items
+**Creating a Project:**
+1. Click the Project Selector at the top center
+2. Click "New Project"
+3. Enter name, description, choose an icon and color
+4. Click Create
 
-**Via Goose:**
-```
-You: Search Brian for "machine learning"
-Goose: Found 5 items related to machine learning...
-```
+**Switching Projects:**
+- Click the Project Selector and choose a project
+- Select "All Projects" to view everything across all knowledge bases
+
+**Editing Projects:**
+- Hover over a project in the selector and click the edit (pencil) icon
+- Change the name, description, icon, or color
 
 ### Graph Visualization
 
@@ -97,6 +128,38 @@ The graph view shows connections between items based on content similarity:
 - **Node Details**: Click any node to see full details in a bottom sheet
 - **Zoom & Pan**: Scroll to zoom, drag to pan
 - **Drag Nodes**: Reposition nodes by dragging
+
+### Knowledge Universe (Hierarchical Zoom)
+
+When viewing "All Projects", you can explore your entire knowledge universe:
+
+1. **Zoom Out** (scale < 0.3): See all projects as distinct clusters with hull boundaries
+2. **Mid Zoom** (scale 0.3-0.5): See knowledge regions within projects
+3. **Zoom In** (scale > 0.5): See individual items with full labels
+
+The zoom indicator in the bottom-left shows your current zoom level and semantic view.
+
+### Knowledge Regions
+
+Regions help organize related items within a project:
+
+1. Click the Regions button in the toolbar
+2. Create a new region with a name and color
+3. Add items to regions by selecting them in the graph
+4. Regions appear as visual boundaries in the graph view
+
+### Searching
+
+**Via Web UI:**
+- Use the search bar at the top
+- Results show both exact matches and similar items
+- Filter by type, tags, or project
+
+**Via Goose:**
+```
+You: Search Brian for "machine learning"
+Goose: Found 5 items related to machine learning...
+```
 
 ## 🔧 Configuration
 
@@ -161,19 +224,36 @@ pnpm dev
 
 ```
 brian/
-├── brian/              # Backend Python package
-│   ├── api/           # FastAPI routes
-│   ├── database/      # SQLite database layer
-│   ├── models/        # Data models
-│   └── services/      # Business logic (similarity, search)
-├── brian_mcp/         # MCP server for Goose integration
-├── frontend/          # React frontend
+├── brian/                  # Backend Python package
+│   ├── api/               # FastAPI routes
+│   ├── database/          # SQLite database layer
+│   │   ├── migrations.py  # Database migrations
+│   │   ├── repository.py  # Data access layer
+│   │   └── schema.py      # Database schema
+│   ├── models/            # Data models
+│   │   └── knowledge_item.py
+│   └── services/          # Business logic
+│       ├── similarity.py  # Similarity calculations
+│       └── clustering.py  # Item clustering
+├── brian_mcp/             # MCP server for Goose integration
+├── frontend/              # React frontend
 │   └── src/
-│       ├── components/  # React components
-│       └── lib/         # Utilities
-├── setup.sh           # One-command installation
-├── start.sh           # Start both servers
-└── stop.sh            # Stop both servers
+│       ├── components/    # React components
+│       │   ├── SimilarityGraph.jsx    # Main graph visualization
+│       │   ├── ProjectSelector.jsx    # Project management UI
+│       │   ├── ProjectPill.jsx        # Project indicator component
+│       │   ├── Timeline.jsx           # Chronological view
+│       │   ├── InfinitePinboard.jsx   # Spatial canvas
+│       │   ├── RegionEditDialog.jsx   # Region management
+│       │   └── Settings.jsx           # App settings
+│       ├── contexts/      # React contexts
+│       │   └── SettingsContext.jsx
+│       ├── store/         # State management
+│       │   └── useStore.js  # Zustand store
+│       └── lib/           # Utilities
+├── setup.sh               # One-command installation
+├── start.sh               # Start both servers
+└── stop.sh                # Stop both servers
 ```
 
 ### Running Tests
@@ -194,32 +274,45 @@ python test_search_fix.py
 
 ## 🎨 UI Features
 
+### Project Selector
+- Large pill-shaped button at top center
+- Shows current project with icon, name, and item count
+- "All Projects" mode shows universe icon with total counts
+- Dropdown with all projects, create new, and edit options
+- 25+ Lucide icons to choose from
+
 ### Timeline View
 - Chronological display of all items
 - Grouped by date
+- Project pills showing item origin
 - Theme lines connecting related items
 - Smooth animations
 
 ### Graph View
-- Force-directed layout
+- Force-directed layout with D3.js
 - Real-time similarity calculations
 - Interactive node selection
 - Theme-based filtering with drop shadows
-- Bottom sheet for detailed view
+- Bottom sheet for detailed view with project pills
 - Pulsing animation on selected nodes
+- **Hierarchical zoom** with semantic rendering
+- **Project hulls** when viewing all projects
+- **Zoom indicator** showing current level
 
 ### Navigation
 - Circular icon buttons matching modern UI patterns
 - Smooth transitions between views
 - Responsive design
+- Keyboard shortcuts (coming soon)
 
 ## 🔌 Goose MCP Tools
 
 When integrated with Goose, Brian provides these tools:
 
-### `create_knowledge_item`
-Add new items to your knowledge base.
+### Knowledge Management
 
+#### `create_knowledge_item`
+Add new items to your knowledge base.
 ```
 Parameters:
 - title: Item title
@@ -227,29 +320,107 @@ Parameters:
 - item_type: link, note, snippet, or paper
 - url: Optional URL
 - tags: Optional list of tags
+- project_id: Optional project to add to
 ```
 
-### `search_knowledge`
+#### `search_knowledge`
 Search your knowledge base with full-text and similarity search.
-
 ```
 Parameters:
 - query: Search query
 - limit: Max results (default: 10)
+- project_id: Optional project filter
 ```
 
-### `find_similar_items`
+#### `find_similar_items`
 Find items similar to a given item.
-
 ```
 Parameters:
 - item_id: UUID of the reference item
 - limit: Max results (default: 5)
 ```
 
-### `debug_item_connections`
-Debug similarity connections for an item.
+#### `get_item_details`
+Get full details of a specific item.
+```
+Parameters:
+- item_id: UUID of the item
+```
 
+### Project Management
+
+#### `list_projects`
+List all knowledge base projects.
+
+#### `create_project`
+Create a new knowledge base project.
+```
+Parameters:
+- name: Project name
+- description: Optional description
+- icon: Optional emoji icon
+- color: Optional hex color
+```
+
+#### `switch_project`
+Switch the default project for new items.
+```
+Parameters:
+- project_id: UUID of the project
+```
+
+#### `get_project_context`
+Get knowledge context from a specific project.
+```
+Parameters:
+- project_id: Optional project ID
+- query: Optional query to filter items
+- limit: Max items (default: 20)
+```
+
+### Region Management
+
+#### `list_regions`
+List all knowledge regions.
+
+#### `create_region`
+Create a new knowledge region.
+```
+Parameters:
+- name: Region name
+- description: Optional description
+- color: Optional hex color
+- item_ids: Optional items to include
+```
+
+#### `get_region_context`
+Get knowledge context from a specific region.
+```
+Parameters:
+- region_id: UUID of the region
+- query: Optional query to filter items
+```
+
+### Context & Intelligence
+
+#### `get_knowledge_context`
+Get relevant knowledge items for a topic.
+```
+Parameters:
+- topic: Topic to get context for
+- limit: Max items (default: 5)
+```
+
+#### `suggest_regions`
+Suggest relevant regions for a query.
+```
+Parameters:
+- query: Query to find relevant regions
+- limit: Max regions (default: 3)
+```
+
+#### `debug_item_connections`
+Debug similarity connections for an item.
 ```
 Parameters:
 - item_id: UUID of the item to debug
@@ -263,6 +434,7 @@ Brian uses a hybrid approach for finding connections:
 2. **Cosine Similarity**: Measures angle between vectors
 3. **Threshold Filtering**: Only shows connections above 0.15 similarity
 4. **Global IDF Scores**: Pre-computed for all documents
+5. **Project-Aware**: Can filter connections by project
 
 This creates meaningful connections between related items without manual linking.
 
@@ -310,6 +482,11 @@ rm ~/.brian/brian.db
 # Restart backend to recreate
 ```
 
+### Graph not showing project hulls
+- Ensure you're in "All Projects" mode (click Project Selector → All Projects)
+- Zoom out significantly (scale < 0.4) to see project boundaries
+- Check that you have items in multiple projects
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -330,6 +507,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Frontend powered by [React](https://react.dev/) and [Vite](https://vitejs.dev/)
 - Graph visualization with [D3.js](https://d3js.org/)
 - UI components from [shadcn/ui](https://ui.shadcn.com/)
+- Icons from [Lucide](https://lucide.dev/)
+- State management with [Zustand](https://zustand-demo.pmnd.rs/)
+- Animations with [Framer Motion](https://www.framer.com/motion/)
 - Goose integration via [MCP](https://modelcontextprotocol.io/)
 
 ## 📚 Documentation
@@ -339,6 +519,24 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Google Drive Integration](GOOGLE_DRIVE_INTEGRATION.md)
 - [Graph Visualization Guide](GRAPH_VISUALIZATION_EXPLAINED.md)
 - [Theme Filtering](THEME_FILTERING.md)
+
+## 🗺️ Roadmap
+
+### Recently Completed
+- ✅ Multi-project knowledge bases
+- ✅ Project selector with custom icons
+- ✅ Hierarchical zoom (Knowledge Universe)
+- ✅ Project hulls and semantic zoom
+- ✅ All Projects view
+- ✅ Project pills in Timeline and Graph
+
+### Coming Soon
+- 🔜 Zoom slider control
+- 🔜 Preset zoom buttons (All / Project / Items)
+- 🔜 Breadcrumb navigation
+- 🔜 Keyboard shortcuts for navigation
+- 🔜 Image upload with LLM interpretation
+- 🔜 Standardized card components
 
 ---
 
