@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ import {
 import { truncateTitle, truncateText } from '@/lib/utils'
 import LinkPreview from './LinkPreview'
 import { ProjectPill } from './ProjectPill'
+import { ItemDetailSheet } from './ItemDetailSheet'
 
 export function Timeline({ 
   items = [], 
@@ -21,6 +22,7 @@ export function Timeline({
   onDelete, 
   onToggleFavorite 
 }) {
+  const [selectedItem, setSelectedItem] = useState(null)
   const getTypeIcon = (type) => {
     const iconMap = {
       link: LinkIcon,
@@ -204,7 +206,11 @@ export function Timeline({
             {/* Items for this date */}
             <div className="ml-24 space-y-4">
               {dateItems.map((item) => (
-                <div key={item.id} className="relative">
+                <div 
+                  key={item.id} 
+                  className="relative cursor-pointer"
+                  onClick={() => setSelectedItem(item)}
+                >
                   {/* Connection dot */}
                   <div className="absolute -left-[4.5rem] top-6 w-4 h-4 rounded-full bg-card border-4 border-foreground z-10" />
                   
@@ -407,6 +413,17 @@ export function Timeline({
           </div>
         ))}
       </div>
+
+      {/* Item Detail Bottom Sheet */}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onToggleFavorite={onToggleFavorite}
+        />
+      )}
     </div>
   )
 }
