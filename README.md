@@ -2,7 +2,7 @@
 
 > A play on "brain" - Brian is your intelligent knowledge repository with vector-based similarity search, beautiful graph visualization, and seamless Goose integration. Because I cannot spell 9/10 times and I make this mistake all the time now you can too!
 
-<img width="2036" height="1193" alt="Screenshot 2026-01-20 at 3 10 36 PM" src="https://github.com/user-attachments/assets/4699bcea-8e51-4950-be92-200290c9a9f7" />
+<img width="1632" height="908" alt="Screenshot 2026-02-04 at 12 29 48 PM" src="https://github.com/user-attachments/assets/00e1a7fc-7421-4ec9-af95-7db61ad1a2dd" />
 
 ## ✨ Features
 
@@ -13,11 +13,14 @@
 - **🔗 Link Previews**: Automatic metadata extraction from URLs
 - **📄 Google Docs Support**: Seamless integration with Google Drive documents
 
+<img width="824" height="758" alt="Screenshot 2026-02-04 at 12 32 03 PM" src="https://github.com/user-attachments/assets/780881d8-84b3-43ef-8a84-2626302d8fbf" />
+
+
 ### Multi-Project Knowledge Bases
 - **🗂️ Multiple Projects**: Organize knowledge into separate project spaces
-- **🎨 Custom Project Icons**: Choose from 25+ Lucide icons for each project
-- **🌈 Project Colors**: Color-code your knowledge bases
-- **🌐 All Projects View**: See everything across all knowledge bases at once
+
+<img width="341" height="468" alt="Screenshot 2026-02-04 at 12 31 45 PM" src="https://github.com/user-attachments/assets/398433a8-21ed-40f9-b280-198bb0be0da7" />
+
 
 ### Graph Visualization
 - **🕸️ Force-Directed Graph**: Interactive D3.js visualization showing connections
@@ -25,6 +28,8 @@
 - **🔍 Semantic Zoom**: Smooth transitions between project, region, and item views
 - **🌌 Knowledge Universe**: Zoom out to see all projects as "galaxies" in a unified space
 - **📍 Knowledge Regions**: Group related items with visual boundaries
+
+<img width="1631" height="907" alt="Screenshot 2026-02-04 at 12 31 10 PM" src="https://github.com/user-attachments/assets/334cb713-1881-4a50-af62-28128d1dc9c8" />
 
 ### Hierarchical Zoom (Knowledge Universe)
 - **🔭 Multi-Scale View**: Seamlessly zoom from individual items to entire knowledge universe
@@ -37,6 +42,9 @@
 - **🤖 Goose Integration**: Use Brian directly from Goose AI assistant via MCP
 - **🧭 Region Profiles**: Configure AI behavior per knowledge region
 - **💡 Smart Context**: Get relevant knowledge context for any topic
+
+<img width="609" height="779" alt="Screenshot 2026-02-04 at 12 32 30 PM" src="https://github.com/user-attachments/assets/f89a48bd-c61f-4b53-bb4b-347ed6d612d3" />
+
 
 ## 🚀 Quick Start
 
