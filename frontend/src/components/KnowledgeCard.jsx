@@ -5,8 +5,14 @@ import { motion } from 'framer-motion'
 import { Star, ArrowUp, ArrowDown, Edit, Trash2, ExternalLink } from 'lucide-react'
 import { getItemTypeEmoji, truncateText, formatRelativeTime } from '../lib/utils'
 import { toast } from 'sonner'
+import CodeSnippetCard from './CodeSnippetCard'
+import ContentPreview from './ContentPreview'
 
 export default function KnowledgeCard({ item, index }) {
+  // Use CodeSnippetCard for code/snippet types
+  if (item.item_type === 'code' || item.item_type === 'snippet') {
+    return <CodeSnippetCard item={item} index={index} />
+  }
   const { openModal, toggleFavorite, voteItem, deleteItem } = useStore()
 
   const handleDelete = async () => {
@@ -43,7 +49,7 @@ export default function KnowledgeCard({ item, index }) {
             <div className="flex items-center gap-2">
               <span className="text-2xl">{getItemTypeEmoji(item.item_type)}</span>
               <div className="flex-1">
-                <h3 className="font-semibold text-lg leading-tight group-hover:text-primary transition-colors">
+                <h3 className="font-normal text-lg leading-tight group-hover:text-primary transition-colors">
                   {item.title}
                 </h3>
               </div>
@@ -107,9 +113,9 @@ export default function KnowledgeCard({ item, index }) {
         </CardHeader>
 
         <CardContent className="flex-1 pb-3">
-          <p className="text-sm text-muted-foreground line-clamp-4">
-            {truncateText(item.content, 200)}
-          </p>
+          <div className="line-clamp-4">
+            <ContentPreview content={item.content} maxLength={200} />
+          </div>
 
           {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">

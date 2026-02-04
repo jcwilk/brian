@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,9 +11,11 @@ import {
   Code2, 
   FileCode
 } from 'lucide-react'
-import { truncateTitle, truncateText } from '@/lib/utils'
+import { truncateTitle } from '@/lib/utils'
 import LinkPreview from './LinkPreview'
 import { ProjectPill } from './ProjectPill'
+import { ItemDetailSheet } from './ItemDetailSheet'
+import ContentPreview from './ContentPreview'
 
 export function Timeline({ 
   items = [], 
@@ -21,6 +23,7 @@ export function Timeline({
   onDelete, 
   onToggleFavorite 
 }) {
+  const [selectedItem, setSelectedItem] = useState(null)
   const getTypeIcon = (type) => {
     const iconMap = {
       link: LinkIcon,
@@ -204,7 +207,11 @@ export function Timeline({
             {/* Items for this date */}
             <div className="ml-24 space-y-4">
               {dateItems.map((item) => (
-                <div key={item.id} className="relative">
+                <div 
+                  key={item.id} 
+                  className="relative cursor-pointer"
+                  onClick={() => setSelectedItem(item)}
+                >
                   {/* Connection dot */}
                   <div className="absolute -left-[4.5rem] top-6 w-4 h-4 rounded-full bg-card border-4 border-foreground z-10" />
                   
@@ -345,7 +352,7 @@ export function Timeline({
                           </div>
                         </div>
                         <CardTitle 
-                          className="text-base font-light leading-snug" 
+                          className="text-base font-normal leading-snug" 
                           title={item.title}
                         >
                           {truncateTitle(item.title, 80)}
@@ -356,9 +363,9 @@ export function Timeline({
                       </CardHeader>
                       
                       <CardContent className="pb-3">
-                        <p className="text-sm text-muted-foreground mb-3">
-                          {truncateText(item.content, 200)}
-                        </p>
+                        <div className="mb-3">
+                          <ContentPreview content={item.content} maxLength={200} />
+                        </div>
                         
                         {item.url && (
                           <a
@@ -407,6 +414,17 @@ export function Timeline({
           </div>
         ))}
       </div>
+
+      {/* Item Detail Bottom Sheet */}
+      {selectedItem && (
+        <ItemDetailSheet
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onToggleFavorite={onToggleFavorite}
+        />
+      )}
     </div>
   )
 }

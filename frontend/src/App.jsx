@@ -17,13 +17,15 @@ import { Timeline } from '@/components/Timeline'
 import { Settings } from '@/components/Settings'
 import LinkPreview from '@/components/LinkPreview'
 import Antigravity from '@/components/animations/Antigravity'
+import { ItemDetailSheet } from '@/components/ItemDetailSheet'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { truncateTitle, truncateText } from '@/lib/utils'
+import { truncateTitle } from '@/lib/utils'
+import ContentPreview from '@/components/ContentPreview'
 import { 
   Plus, 
   Settings as SettingsIcon, 
@@ -86,6 +88,7 @@ function App() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [searchDialogOpen, setSearchDialogOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
+  const [detailItem, setDetailItem] = useState(null) // For bottom sheet detail view
   const [filterType, setFilterType] = useState(null)
 
   const getTypeIcon = (type) => {
@@ -484,7 +487,11 @@ function App() {
                       {/* Items Grid */}
                       <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${densityClasses.grid}`}>
                         {items.map((item) => (
-                  <div key={item.id} className="group">
+                  <div 
+                    key={item.id} 
+                    className="group cursor-pointer"
+                    onClick={() => setDetailItem(item)}
+                  >
                     {/* Render link preview for link items, regular card for others */}
                     {item.item_type === 'link' ? (
                       <div className="bg-card rounded-lg shadow-md overflow-hidden border border-border hover:shadow-lg transition-all hover:-translate-y-1">
@@ -496,7 +503,7 @@ function App() {
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => toggleFavorite(item.id)}
+                              onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id) }}
                               title={item.is_favorite ? 'Unfavorite' : 'Favorite'}
                             >
                               <Star className={`w-3 h-3 ${item.is_favorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
@@ -518,7 +525,7 @@ function App() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7"
-                              onClick={() => handleEdit(item)}
+                              onClick={(e) => { e.stopPropagation(); handleEdit(item) }}
                               title="Edit"
                             >
                               <Pencil className="w-3 h-3" />
@@ -527,7 +534,7 @@ function App() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 hover:text-destructive"
-                              onClick={() => handleDelete(item)}
+                              onClick={(e) => { e.stopPropagation(); handleDelete(item) }}
                               title="Delete"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -564,7 +571,7 @@ function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={() => toggleFavorite(item.id)}
+                                onClick={(e) => { e.stopPropagation(); toggleFavorite(item.id) }}
                                 title={item.is_favorite ? 'Unfavorite' : 'Favorite'}
                               >
                                 <Star className={`w-3 h-3 ${item.is_favorite ? 'fill-yellow-400 text-yellow-400' : ''}`} />
@@ -579,7 +586,7 @@ function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7"
-                                onClick={() => handleEdit(item)}
+                                onClick={(e) => { e.stopPropagation(); handleEdit(item) }}
                                 title="Edit"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -588,7 +595,7 @@ function App() {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 hover:text-destructive"
-                                onClick={() => handleDelete(item)}
+                                onClick={(e) => { e.stopPropagation(); handleDelete(item) }}
                                 title="Delete"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -596,7 +603,7 @@ function App() {
                             </div>
                           </div>
                           <CardTitle 
-                            className={`${densityClasses.title} font-light leading-snug line-clamp-2`}
+                            className={`${densityClasses.title} font-normal leading-snug line-clamp-2`}
                             title={item.title}
                           >
                             {truncateTitle(item.title, 70)}
@@ -611,9 +618,9 @@ function App() {
                         </CardHeader>
                         
                         <CardContent className={`flex-1 ${densityClasses.cardContent}`}>
-                          <p className={`${densityClasses.text} text-muted-foreground line-clamp-4 mb-3`}>
-                            {truncateText(item.content, 150)}
-                          </p>
+                          <div className={`${densityClasses.text} line-clamp-4 mb-3`}>
+                            <ContentPreview content={item.content} maxLength={150} />
+                          </div>
                           
                           {item.url && (
                             <a
@@ -799,6 +806,17 @@ function App() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Item Detail Bottom Sheet - Feed View */}
+      {detailItem && (
+        <ItemDetailSheet
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onToggleFavorite={toggleFavorite}
+        />
+      )}
     </div>
   )
 }
