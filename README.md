@@ -551,6 +551,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - [Google Drive Integration](GOOGLE_DRIVE_INTEGRATION.md)
 - [Graph Visualization Guide](GRAPH_VISUALIZATION_EXPLAINED.md)
 - [Theme Filtering](THEME_FILTERING.md)
+- [Agent Developer Guide](AGENTS.md) - For AI agents working with this codebase
 
 ## 🗺️ Roadmap
 
