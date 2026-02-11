@@ -2,7 +2,7 @@
 Database schema for brian - inspired by Goose's SQLite architecture
 """
 
-SCHEMA_VERSION = 6  # Added projects table and project_id foreign keys
+SCHEMA_VERSION = 7  # Fixed FTS5 content/rowid configuration
 
 # Schema creation SQL statements
 SCHEMA_SQL = """
@@ -141,13 +141,14 @@ CREATE TABLE IF NOT EXISTS region_items (
 );
 
 -- Full-text search virtual table
+-- Using external content mode since we use TEXT UUIDs, not INTEGER rowids
+-- Sync is handled manually via triggers below
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_search USING fts5(
     item_id UNINDEXED,
     title,
     content,
     tags,
-    content='knowledge_items',
-    content_rowid='rowid'
+    content=''
 );
 
 -- Indexes for performance

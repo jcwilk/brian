@@ -117,6 +117,22 @@ MIGRATIONS = {
                UPDATE projects SET updated_at = CURRENT_TIMESTAMP
                WHERE id = NEW.id;
            END""",
+    ],
+    7: [
+        # Fix FTS5 configuration - rebuild knowledge_search table with external content mode
+        # The previous config used content='knowledge_items' with content_rowid='rowid'
+        # but knowledge_items uses TEXT UUIDs, not INTEGER rowids, causing "T.item_id" errors
+        "DROP TABLE IF EXISTS knowledge_search",
+        """CREATE VIRTUAL TABLE knowledge_search USING fts5(
+            item_id UNINDEXED,
+            title,
+            content,
+            tags,
+            content=''
+        )""",
+        # Repopulate FTS index from existing items
+        """INSERT INTO knowledge_search(item_id, title, content)
+           SELECT id, title, content FROM knowledge_items""",
     ]
 }
 
