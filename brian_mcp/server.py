@@ -407,6 +407,20 @@ For simple web links without document content:
             }
         ),
         Tool(
+            name="delete_knowledge_item",
+            description="Delete a knowledge item from the database. This action cannot be undone.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "item_id": {
+                        "type": "string",
+                        "description": "ID of the item to delete"
+                    }
+                },
+                "required": ["item_id"]
+            }
+        ),
+        Tool(
             name="list_all_tags",
             description="Get a list of all unique tags used in the knowledge base.",
             inputSchema={
@@ -1194,6 +1208,42 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "updated_at": updated_item.updated_at.isoformat() if updated_item.updated_at else None,
             }
         }
+        
+        return [TextContent(
+            type="text",
+            text=json.dumps(response, indent=2)
+        )]
+    
+    elif name == "delete_knowledge_item":
+        item_id = arguments["item_id"]
+        
+        # Check if item exists first
+        item = repo.get_by_id(item_id)
+        if not item:
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Item {item_id} not found", "success": False})
+            )]
+        
+        # Store item details for confirmation message
+        item_title = item.title
+        item_type = item.item_type.value if hasattr(item.item_type, 'value') else str(item.item_type)
+        
+        # Delete the item
+        success = repo.delete(item_id)
+        
+        if success:
+            response = {
+                "success": True,
+                "message": f"Deleted {item_type}: {item_title}",
+                "item_id": item_id
+            }
+        else:
+            response = {
+                "success": False,
+                "error": "Failed to delete item",
+                "item_id": item_id
+            }
         
         return [TextContent(
             type="text",

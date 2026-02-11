@@ -361,6 +361,24 @@ Parameters:
 - item_id: UUID of the item
 ```
 
+#### `update_knowledge_item`
+Update an existing knowledge item's content, tags, or other properties.
+```
+Parameters:
+- item_id: UUID of the item to update
+- title: Optional new title
+- content: Optional new content
+- tags: Optional new tags list
+- url: Optional new URL
+```
+
+#### `delete_knowledge_item`
+Delete a knowledge item from the database. This action cannot be undone.
+```
+Parameters:
+- item_id: UUID of the item to delete
+```
+
 ### Project Management
 
 #### `list_projects`
