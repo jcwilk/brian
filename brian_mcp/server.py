@@ -6,8 +6,10 @@ Exposes Brian's knowledge management capabilities through the Model Context Prot
 Allows AI assistants to search, create, and connect knowledge items.
 """
 
+import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -15,6 +17,22 @@ from typing import Any, Optional
 
 # Add parent directory to path to import brian modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Configure MCP logging to file (MCP uses stdio for protocol, so stderr may not be captured)
+# Uses BRIAN_LOG_DIR (project dir) when set by Goose, else ~/.brian
+_log_dir = Path(os.getenv("BRIAN_LOG_DIR", str(Path.home() / ".brian")))
+_log_dir.mkdir(exist_ok=True, parents=True)
+_mcp_log = logging.FileHandler(_log_dir / "mcp.log")
+_mcp_log.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+))
+# Attach to both brian_mcp and brian (so repo/db errors from MCP also get logged)
+for _log_name in ("brian_mcp", "brian"):
+    _log = logging.getLogger(_log_name)
+    _log.addHandler(_mcp_log)
+    _log.setLevel(logging.INFO)
+_logger = logging.getLogger("brian_mcp")
+_logger.info("MCP module loaded, log_dir=%s, cwd=%s", _log_dir, os.getcwd())
 
 from brian.database.connection import Database
 from brian.database.repository import KnowledgeRepository, RegionRepository, RegionProfileRepository, ProjectRepository
@@ -52,7 +70,8 @@ similarity_service: Optional[SimilarityService] = None
 def init_services():
     """Initialize database connection and services"""
     global repo, region_repo, profile_repo, project_repo, similarity_service
-    db_path = os.path.expanduser("~/.brian/brian.db")
+    db_path = os.getenv("BRIAN_DB_PATH", os.path.expanduser("~/.brian/brian.db"))
+    _logger.info("init_services: db_path=%s", db_path)
     db = Database(db_path)
     # Don't call initialize() - it breaks FTS queries in autocommit mode
     # The database should already be initialized by the web app
@@ -727,18 +746,40 @@ For simple web links without document content:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     """Handle tool calls"""
-    
+    _logger.info("Tool called: %s (args_keys=%s)", name, list(arguments.keys()) if arguments else [])
+    try:
+        return await _handle_call_tool_impl(name, arguments)
+    except Exception as e:
+        _logger.exception("Tool %s failed: %s", name, e)
+        return [TextContent(
+            type="text",
+            text=json.dumps({"error": str(e), "tool": name})
+        )]
+
+
+async def _handle_call_tool_impl(name: str, arguments: dict) -> list[TextContent]:
+    """Implementation of tool handlers"""
     if name == "search_knowledge":
         query = arguments["query"]
         item_type = arguments.get("item_type")
         project_id = arguments.get("project_id")
         limit = arguments.get("limit", 10)
         
+        _logger.info("search_knowledge: query=%r project_id=%r", query, project_id)
+        
         # First, do full-text search (with optional project scoping)
-        text_results = repo.search(query, project_id=project_id)
+        try:
+            text_results = repo.search(query, limit=limit, project_id=project_id)
+        except Exception as e:
+            _logger.exception("search_knowledge: repo.search failed: %s", e)
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Search failed: {e}", "query": query})
+            )]
         
         if item_type:
-            text_results = [r for r in text_results if r.item_type == item_type]
+            item_type_enum = ItemType(item_type)
+            text_results = [r for r in text_results if r.item_type == item_type_enum]
         
         # If we have text results, enhance with similarity-based related items
         all_items = repo.get_all(project_id=project_id)
@@ -1894,9 +1935,14 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def main():
     """Main entry point for the MCP server"""
+    _logger.info("MCP server process starting")
     # Initialize services
-    init_services()
-    
+    try:
+        init_services()
+        _logger.info("MCP services initialized successfully")
+    except Exception as e:
+        _logger.exception("MCP init_services failed: %s", e)
+        raise
     # Run the server using stdin/stdout streams
     async with stdio_server() as (read_stream, write_stream):
         await server.run(
@@ -1914,4 +1960,23 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify MCP setup (init services, log to mcp.log, exit). Use to test Goose config."
+    )
+    args = parser.parse_args()
+    if args.check:
+        _logger.info("--check mode: verifying setup")
+        try:
+            init_services()
+            projects = project_repo.get_all()
+            _logger.info("--check OK: db connected, projects=%d", len(projects))
+            print("OK: Brian MCP setup verified. Check mcp.log for details.", file=sys.stderr)
+        except Exception as e:
+            _logger.exception("--check FAILED: %s", e)
+            print(f"FAILED: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        asyncio.run(main())

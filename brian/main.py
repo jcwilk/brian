@@ -1,8 +1,19 @@
 """
 Main application entry point for brian
 """
+import logging
+import sys
+
 import uvicorn
 from fastapi import FastAPI
+
+# Configure logging to stderr (captured in backend.log when run via start.sh)
+_log_handler = logging.StreamHandler(sys.stderr)
+_log_handler.setFormatter(logging.Formatter(
+    "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+))
+logging.getLogger("brian").addHandler(_log_handler)
+logging.getLogger("brian").setLevel(logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse

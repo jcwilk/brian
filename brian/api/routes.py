@@ -1,7 +1,11 @@
 """
 API routes for brian
 """
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
+
+logger = logging.getLogger("brian.api")
 from typing import List, Optional
 from datetime import datetime
 
@@ -214,9 +218,12 @@ async def search_items(
 ):
     """Full-text search across knowledge items"""
     repo, _, _, _, _, _ = get_repositories()
-    
-    items = repo.search(q, limit=limit, project_id=project_id)
-    return [item.to_dict() for item in items]
+    try:
+        items = repo.search(q, limit=limit, project_id=project_id)
+        return [item.to_dict() for item in items]
+    except Exception as e:
+        logger.exception("Search failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

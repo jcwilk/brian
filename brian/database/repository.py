@@ -1,8 +1,11 @@
 """
 Repository layer for database operations
 """
+import logging
 from typing import List, Optional, Dict
 from datetime import datetime
+
+logger = logging.getLogger("brian.database")
 
 from .connection import Database
 from ..models import (
@@ -182,23 +185,30 @@ class KnowledgeRepository:
         """Full-text search across knowledge items"""
         import sqlite3
         
-        # Create a fresh connection for FTS queries to avoid the initialize() issue
-        # The Database wrapper's connection gets corrupted after initialize() is called
-        conn = sqlite3.connect(self.db.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        # First, search the FTS table to get matching item IDs
-        fts_query = """
-            SELECT item_id, rank 
-            FROM knowledge_search 
-            WHERE knowledge_search MATCH ? 
-            ORDER BY rank
-            LIMIT ?
-        """
-        cursor.execute(fts_query, (query_text, limit))
-        fts_rows = cursor.fetchall()
-        conn.close()
+        conn = None
+        try:
+            # Create a fresh connection for FTS queries to avoid the initialize() issue
+            # The Database wrapper's connection gets corrupted after initialize() is called
+            conn = sqlite3.connect(self.db.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # First, search the FTS table to get matching item IDs
+            fts_query = """
+                SELECT item_id, rank 
+                FROM knowledge_search 
+                WHERE knowledge_search MATCH ? 
+                ORDER BY rank
+                LIMIT ?
+            """
+            cursor.execute(fts_query, (query_text, limit))
+            fts_rows = cursor.fetchall()
+        except Exception as e:
+            logger.exception("FTS search failed: query=%r db=%s: %s", query_text, self.db.db_path, e)
+            raise
+        finally:
+            if conn:
+                conn.close()
         
         if not fts_rows:
             return []

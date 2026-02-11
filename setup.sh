@@ -169,6 +169,7 @@ if [ -f "$GOOSE_CONFIG" ] && grep -q "^extensions:" "$GOOSE_CONFIG"; then
       - brian_mcp.server\
     envs:\
       BRIAN_DB_PATH: '"$BRIAN_DIR"'/brian.db\
+      BRIAN_LOG_DIR: '"$SCRIPT_DIR"'\
     env_keys: []\
     timeout: 300\
     bundled: null\
@@ -191,6 +192,7 @@ extensions:
       - brian_mcp.server
     envs:
       BRIAN_DB_PATH: $BRIAN_DIR/brian.db
+      BRIAN_LOG_DIR: $SCRIPT_DIR
     env_keys: []
     timeout: 300
     bundled: null
