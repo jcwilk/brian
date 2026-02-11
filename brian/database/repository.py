@@ -185,6 +185,11 @@ class KnowledgeRepository:
         """Full-text search across knowledge items"""
         import sqlite3
         
+        query_text = (query_text or "").strip()
+        # FTS5 rejects empty MATCH and "*" alone; fall back to get_all for these
+        if not query_text or query_text == "*":
+            return self.get_all(limit=limit, project_id=project_id, sort_by="created_at", sort_order="DESC")
+        
         conn = None
         try:
             # Create a fresh connection for FTS queries to avoid the initialize() issue
@@ -193,12 +198,15 @@ class KnowledgeRepository:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            # First, search the FTS table to get matching item IDs
+            # First, search the FTS table and join to get item IDs
+            # FTS5 with external content: rowid maps to knowledge_items.rowid
+            # MATCH must use bare table name, not alias
             fts_query = """
-                SELECT item_id, rank 
+                SELECT ki.id AS item_id, knowledge_search.rank 
                 FROM knowledge_search 
+                JOIN knowledge_items ki ON knowledge_search.rowid = ki.rowid 
                 WHERE knowledge_search MATCH ? 
-                ORDER BY rank
+                ORDER BY knowledge_search.rank
                 LIMIT ?
             """
             cursor.execute(fts_query, (query_text, limit))
