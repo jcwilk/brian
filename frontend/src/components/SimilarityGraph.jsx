@@ -818,8 +818,8 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
 
     // Color scale for node types
     const colorScale = d3.scaleOrdinal()
-      .domain(['link', 'note', 'snippet', 'paper'])
-      .range(['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'])
+      .domain(['link', 'note', 'snippet', 'paper', 'skill'])
+      .range(['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']) // Added pink for skills
 
     // Create SVG
     const svg = d3.select(svgRef.current)
@@ -1677,6 +1677,10 @@ export function SimilarityGraph({ items, width = 1200, height = 800 }) {
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-violet-500"></div>
                   <span className="text-xs">Papers</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                  <span className="text-xs">Skills</span>
                 </div>
               </div>
             </div>
